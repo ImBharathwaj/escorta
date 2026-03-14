@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
   const user = await prisma.user.findFirst({
     where: {
       OR: [{ email: email || undefined }, { phone: phone || undefined }],
+      deletedAt: null,
     },
   });
 
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest) {
       displayName: user.displayName ?? null,
       avatarUrl: user.avatarUrl ?? null,
       isPremiumMember: user.isPremiumMember ?? false,
+      credits: user.credits ?? 0,
     },
     token,
   });

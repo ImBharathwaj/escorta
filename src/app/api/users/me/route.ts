@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
       displayName: true,
       avatarUrl: true,
       isPremiumMember: true,
+      credits: true,
       createdAt: true,
     },
   });
@@ -69,6 +70,7 @@ export async function PATCH(req: NextRequest) {
       displayName: true,
       avatarUrl: true,
       isPremiumMember: true,
+      credits: true,
       createdAt: true,
     },
   });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
+import { MESSAGE_CREDITS } from "@/lib/credits";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 
@@ -26,6 +27,19 @@ async function canAccessBooking(bookingId: string, userId: string, role: string)
   return null;
 }
 
+/** Allows read-only access for accepted or cancelled (disconnected) bookings so message history persists. */
+async function canViewBooking(bookingId: string, userId: string, role: string) {
+  const booking = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    include: { escort: true, client: true },
+  });
+  if (!booking) return null;
+  if (booking.status !== "accepted" && booking.status !== "cancelled") return null;
+  if (role === "client" && booking.clientId === userId) return booking;
+  if (role === "escort" && booking.escort.userId === userId) return booking;
+  return null;
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -36,7 +50,7 @@ export async function GET(
   }
 
   const { id } = await params;
-  const booking = await canAccessBooking(id, payload.userId, payload.role);
+  const booking = await canViewBooking(id, payload.userId, payload.role);
   if (!booking) {
     return NextResponse.json({ error: "Connection not found" }, { status: 404 });
   }
@@ -47,8 +61,10 @@ export async function GET(
     orderBy: { createdAt: "asc" },
   });
 
+  const canSend = booking.status === "accepted";
+
   return NextResponse.json(
-    { messages },
+    { messages, canSend },
     {
       headers: {
         "Cache-Control": "no-store, no-cache, must-revalidate",
@@ -78,6 +94,20 @@ export async function POST(
     return NextResponse.json({ error: "Message required" }, { status: 400 });
   }
 
+  if (payload.role === "client") {
+    const clientUser = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { credits: true },
+    });
+    const credits = clientUser?.credits ?? 0;
+    if (credits < MESSAGE_CREDITS) {
+      return NextResponse.json(
+        { error: `Insufficient credits. You need ${MESSAGE_CREDITS} credit per message. You have ${credits}.` },
+        { status: 402 }
+      );
+    }
+  }
+
   const msg = await prisma.message.create({
     data: {
       bookingId: id,
@@ -86,6 +116,13 @@ export async function POST(
     },
     include: { sender: { select: { id: true, role: true } } },
   });
+
+  if (payload.role === "client") {
+    await prisma.user.update({
+      where: { id: payload.userId },
+      data: { credits: { decrement: MESSAGE_CREDITS } },
+    });
+  }
 
   return NextResponse.json(msg);
 }

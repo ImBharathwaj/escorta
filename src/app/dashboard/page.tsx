@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { BlurredImage } from "@/components/BlurredImage";
 
 type Booking = {
   id: string;
@@ -13,25 +14,32 @@ type Booking = {
   price: number | null;
   message: string | null;
   createdAt: string;
-  client?: { id: string; email: string | null; displayName?: string | null };
-  escort?: { id: string; aliasName: string };
+  client?: {
+    id: string;
+    email: string | null;
+    displayName?: string | null;
+    avatarSignedUrl?: string | null;
+  };
+  escort?: { id: string; aliasName: string; primaryPhotoId?: string | null };
 };
 
 function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, token, logout } = useAuth();
+  const { user, token, logout, authReady } = useAuth();
   const [loading, setLoading] = useState(true);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [responding, setResponding] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!authReady) return;
     if (!token) {
       router.push("/login?redirect=/dashboard");
       return;
     }
     setLoading(false);
-  }, [token, router]);
+  }, [token, authReady, router]);
 
   const fetchBookings = useCallback(() => {
     if (!token) return;
@@ -87,10 +95,32 @@ function DashboardContent() {
     }
   };
 
+  const handleDisconnect = async (bookingId: string) => {
+    if (!token) return;
+    setDisconnecting(bookingId);
+    try {
+      const res = await fetch(`/api/bookings/${bookingId}/disconnect`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) fetchBookings();
+    } finally {
+      setDisconnecting(null);
+    }
+  };
+
   const booked = searchParams.get("booked") === "1";
   const connected = searchParams.get("connected") === "1";
   const pending = bookings.filter((b) => b.status === "pending");
   const accepted = bookings.filter((b) => b.status === "accepted");
+  // One pending request per escort for client (avoid duplicate cards)
+  const pendingByEscort =
+    user?.role === "client"
+      ? pending.filter(
+          (b, i, arr) =>
+            !b.escort || arr.findIndex((x) => x.escort?.id === b.escort?.id) === i
+        )
+      : [];
   // One connection per escort for client (avoid duplicate cards for same companion)
   const connectionsByEscort = accepted.filter(
     (b, i, arr) => !b.escort || arr.findIndex((x) => x.escort?.id === b.escort?.id) === i
@@ -124,18 +154,75 @@ function DashboardContent() {
           </div>
         )}
 
+        {user?.role === "client" && pendingByEscort.length > 0 && (
+          <div className="mb-10 p-6 border border-[var(--color-border)] bg-[var(--color-charcoal)]">
+            <h2 className="text-lg font-light text-[var(--color-ivory)] tracking-wide mb-1">
+              Connection requests you&apos;ve sent
+            </h2>
+            <p className="text-sm text-[var(--color-silver)] font-light mb-4">
+              Awaiting response from the companion. You&apos;ll be able to chat once they accept.
+            </p>
+            <div className="space-y-3">
+              {pendingByEscort.map((b) => (
+                <div
+                  key={b.id}
+                  className="p-4 border border-[var(--color-border)] bg-[var(--color-obsidian)] flex justify-between items-center gap-4"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full overflow-hidden border border-[var(--color-border)] bg-[var(--color-slate)] flex-shrink-0 flex items-center justify-center">
+                      {b.escort?.primaryPhotoId ? (
+                        <BlurredImage photoId={b.escort.primaryPhotoId} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-lg text-[var(--color-muted)]">—</span>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-[var(--color-ivory)] font-light">
+                        {b.escort ? (
+                          <Link
+                            href={`/escorts/${b.escort.id}`}
+                            className="hover:text-[var(--color-champagne)] transition"
+                          >
+                            {b.escort.aliasName ?? "Companion"}
+                          </Link>
+                        ) : (
+                          "Companion"
+                        )}
+                      </p>
+                      <span className="text-xs tracking-widest uppercase text-[var(--color-silver)]">
+                        Pending
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {user?.role === "client" && connectionsByEscort.length > 0 && (
           <div className="mb-10 p-6 border border-[var(--color-border)] bg-[var(--color-charcoal)]">
-            <h2 className="text-lg font-light text-[var(--color-ivory)] tracking-wide mb-4">
+            <h2 className="text-lg font-light text-[var(--color-ivory)] tracking-wide mb-1">
               Your connections
             </h2>
+            <p className="text-sm text-[var(--color-silver)] font-light mb-4">
+              You can chat with any of them from the chat list (icon in the bottom right). When a companion accepts your request, they appear here and in the chat list.
+            </p>
             <div className="space-y-3">
               {connectionsByEscort.map((b) => (
                 <div
                   key={b.id}
-                  className="p-4 border border-[var(--color-border)] bg-[var(--color-obsidian)] flex justify-between items-center"
+                  className="p-4 border border-[var(--color-border)] bg-[var(--color-obsidian)] flex justify-between items-center gap-4"
                 >
-                  <div>
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full overflow-hidden border border-[var(--color-border)] bg-[var(--color-slate)] flex-shrink-0 flex items-center justify-center">
+                      {b.escort?.primaryPhotoId ? (
+                        <BlurredImage photoId={b.escort.primaryPhotoId} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-lg text-[var(--color-muted)]">—</span>
+                      )}
+                    </div>
+                    <div>
                     <p className="text-[var(--color-ivory)] font-light">
                       {b.escort ? (
                         <Link
@@ -159,6 +246,7 @@ function DashboardContent() {
                     >
                       {b.status === "accepted" ? "Connected" : b.status}
                     </span>
+                    </div>
                   </div>
                   {b.status === "accepted" && (
                     <Link
@@ -238,28 +326,61 @@ function DashboardContent() {
                 <h3 className="text-sm font-light text-[var(--color-ivory)] mb-3">Active connections</h3>
                 <div className="space-y-2">
                   {connectionsByClient.map((b) => (
-                    <div key={b.id} className="flex justify-between items-center">
-                      {b.client ? (
+                    <div key={b.id} className="flex justify-between items-center gap-3">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="w-10 h-10 rounded-full overflow-hidden border border-[var(--color-border)] bg-[var(--color-slate)] flex-shrink-0 flex items-center justify-center">
+                          {b.client?.avatarSignedUrl ? (
+                            <img src={b.client.avatarSignedUrl} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-sm text-[var(--color-muted)]">—</span>
+                          )}
+                        </div>
+                        {b.client ? (
+                          <Link
+                            href={`/members/${b.client.id}`}
+                            className="text-[var(--color-silver)] hover:text-[var(--color-champagne)] transition truncate"
+                          >
+                            {(b.client.displayName || b.client.email) ?? "Member"}
+                          </Link>
+                        ) : (
+                          <span className="text-[var(--color-silver)]">Member</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
                         <Link
-                          href={`/members/${b.client.id}`}
-                          className="text-[var(--color-silver)] hover:text-[var(--color-champagne)] transition"
+                          href={`/connections/${b.id}`}
+                          className="text-sm text-[var(--color-champagne)] hover:text-[var(--color-champagne-light)]"
                         >
-                          {(b.client.displayName || b.client.email) ?? "Member"}
+                          Chat
                         </Link>
-                      ) : (
-                        <span className="text-[var(--color-silver)]">Member</span>
-                      )}
-                      <Link
-                        href={`/connections/${b.id}`}
-                        className="text-sm text-[var(--color-champagne)] hover:text-[var(--color-champagne-light)]"
-                      >
-                        Chat
-                      </Link>
+                        <button
+                          type="button"
+                          onClick={() => handleDisconnect(b.id)}
+                          disabled={disconnecting === b.id}
+                          className="text-xs text-[var(--color-muted)] hover:text-[var(--color-silver)] transition disabled:opacity-50"
+                        >
+                          {disconnecting === b.id ? "…" : "Disconnect"}
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {user?.role === "client" && (
+          <div className="border border-[var(--color-border)] bg-[var(--color-charcoal)] p-6 mb-6">
+            <h3 className="text-sm font-light text-[var(--color-silver)] mb-1">Credits</h3>
+            <p className="text-2xl font-light text-[var(--color-champagne)] mb-2">{user?.credits ?? 0} credits</p>
+            <p className="text-xs text-[var(--color-muted)] mb-3">Use credits to connect with companions and send messages.</p>
+            <Link
+              href="/membership"
+              className="text-sm tracking-widest uppercase text-[var(--color-champagne)] hover:text-[var(--color-champagne-light)] transition"
+            >
+              Get more credits
+            </Link>
           </div>
         )}
 

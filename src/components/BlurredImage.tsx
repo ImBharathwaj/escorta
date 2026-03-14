@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -27,14 +27,39 @@ export function BlurredImage({ photoId, alt, className = "", aspect = "card" }: 
         ? "aspect-[4/5]"
         : "";
 
+  const [isFullImage, setIsFullImage] = useState(false);
+
+  const fetchImage = useCallback(() => {
+    if (!photoId) return;
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    fetch(`/api/photos/${photoId}`, { headers, cache: "no-store" })
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed to load");
+        const full = r.headers.get("X-Image-Full") === "true";
+        setIsFullImage(full);
+        return r.blob();
+      })
+      .then((blob) => {
+        const toRevoke = blobUrlRef.current;
+        if (toRevoke) URL.revokeObjectURL(toRevoke);
+        const url = URL.createObjectURL(blob);
+        blobUrlRef.current = url;
+        setBlobUrl(url);
+      })
+      .catch(() => {});
+  }, [photoId, token]);
+
   useEffect(() => {
     if (!photoId) return;
     let revoked = false;
     const headers: Record<string, string> = {};
-    if (isPremium && token) headers.Authorization = `Bearer ${token}`;
-    fetch(`/api/photos/${photoId}`, { headers })
+    if (token) headers.Authorization = `Bearer ${token}`;
+    fetch(`/api/photos/${photoId}`, { headers, cache: "no-store" })
       .then((r) => {
         if (!r.ok) throw new Error("Failed to load");
+        const full = r.headers.get("X-Image-Full") === "true";
+        if (!revoked) setIsFullImage(full);
         return r.blob();
       })
       .then((blob) => {
@@ -50,8 +75,20 @@ export function BlurredImage({ photoId, alt, className = "", aspect = "card" }: 
       blobUrlRef.current = null;
       if (toRevoke) URL.revokeObjectURL(toRevoke);
       setBlobUrl(null);
+      setIsFullImage(false);
     };
-  }, [photoId, isPremium, token]);
+  }, [photoId, token]);
+
+  useEffect(() => {
+    if (user?.role !== "client" || !photoId) return;
+    const onVisibility = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        fetchImage();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [user?.role, photoId, fetchImage]);
 
   if (!photoId) {
     return (
@@ -63,7 +100,8 @@ export function BlurredImage({ photoId, alt, className = "", aspect = "card" }: 
     );
   }
 
-  if (isPremium && blobUrl) {
+  const showFull = isPremium || isFullImage;
+  if (showFull && blobUrl) {
     return (
       <img
         src={blobUrl}
@@ -73,7 +111,7 @@ export function BlurredImage({ photoId, alt, className = "", aspect = "card" }: 
     );
   }
 
-  if (isPremium && !blobUrl) {
+  if (showFull && !blobUrl) {
     return (
       <div
         className={`flex items-center justify-center text-[var(--color-muted)] bg-[var(--color-slate)] animate-pulse ${aspectClass} ${className}`}

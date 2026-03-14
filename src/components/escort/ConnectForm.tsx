@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
+import { CONNECT_CREDITS } from "@/lib/credits";
 
 export default function ConnectForm({
   escortId,
@@ -13,27 +14,71 @@ export default function ConnectForm({
   escortName: string;
 }) {
   const router = useRouter();
-  const { user, token } = useAuth();
+  const { user, token, refreshUser } = useAuth();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [connectionLoading, setConnectionLoading] = useState(true);
   const [existingConnection, setExistingConnection] = useState<{ id: string; status: string } | null>(null);
+  const retryRef = useRef(false);
 
-  useEffect(() => {
-    if (!token || user?.role !== "client") return;
-    fetch("/api/bookings", { headers: { Authorization: `Bearer ${token}` } })
+  const fetchConnection = useCallback(() => {
+    if (!token || user?.role !== "client") {
+      setConnectionLoading(false);
+      return;
+    }
+    setConnectionLoading(true);
+    const idToMatch = String(escortId).trim();
+    fetch("/api/bookings", {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    })
       .then((r) => r.json())
       .then((data) => {
-        const list = (data.bookings || []).filter(
-          (b: { escort?: { id: string }; escortId?: string }) => (b.escort?.id || b.escortId) === escortId
+        const raw = data?.bookings ?? data ?? [];
+        const list = Array.isArray(raw) ? raw : [];
+        const forThisEscort = list.filter(
+          (b: { escort?: { id: string }; escortId?: string }) => {
+            const eid = (b.escort?.id ?? b.escortId ?? "").toString().trim();
+            return eid && eid === idToMatch;
+          }
         );
-        const accepted = list.find((b: { status: string }) => b.status === "accepted");
-        const pending = list.find((b: { status: string }) => b.status === "pending");
-        const rejected = list.find((b: { status: string }) => b.status === "rejected");
+        const accepted = forThisEscort.find((b: { status: string }) => b.status === "accepted");
+        const pending = forThisEscort.find((b: { status: string }) => b.status === "pending");
+        const rejected = forThisEscort.find((b: { status: string }) => b.status === "rejected");
         const conn = accepted ?? pending ?? rejected;
-        if (conn) setExistingConnection({ id: conn.id, status: conn.status });
+        setExistingConnection(conn ? { id: conn.id, status: conn.status } : null);
       })
-      .catch(() => {});
+      .catch(() => setExistingConnection(null))
+      .finally(() => setConnectionLoading(false));
   }, [token, user?.role, escortId]);
+
+  useEffect(() => {
+    fetchConnection();
+  }, [fetchConnection]);
+
+  useEffect(() => {
+    if (user?.role !== "client") return;
+    const onFocus = () => fetchConnection();
+    const onVisible = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        fetchConnection();
+      }
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [user?.role, fetchConnection]);
+
+  // If we're client and still showing connect form after load, refetch once in case of race/cache
+  useEffect(() => {
+    if (user?.role !== "client" || connectionLoading || existingConnection != null || retryRef.current) return;
+    retryRef.current = true;
+    const t = setTimeout(() => fetchConnection(), 600);
+    return () => clearTimeout(t);
+  }, [user?.role, connectionLoading, existingConnection, fetchConnection]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -61,8 +106,10 @@ export default function ConnectForm({
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
+        if (res.status === 402) await refreshUser();
         throw new Error(err.error || "Failed to connect");
       }
+      await refreshUser();
       router.push("/dashboard?connected=1");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to connect");
@@ -113,22 +160,29 @@ export default function ConnectForm({
     );
   }
 
-  if (existingConnection?.status === "accepted") {
+  if (connectionLoading) {
     return (
       <div className="sticky top-24 border border-[var(--color-border)] bg-[var(--color-charcoal)] p-8 rounded-sm">
-        <h2 className="text-lg font-light text-[var(--color-ivory)] tracking-wide mb-4">
-          You&apos;re connected
-        </h2>
-        <p className="text-[var(--color-silver)] font-light text-sm mb-4">
-          You can now chat with {escortName} to arrange meetups.
-        </p>
-        <Link
-          href={`/connections/${existingConnection.id}`}
-          className="block w-full py-3.5 text-center text-sm tracking-widest uppercase border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)] hover:text-[var(--color-obsidian)] transition"
-        >
-          Open chat
-        </Link>
+        <div className="animate-pulse text-[var(--color-silver)] font-light text-sm">
+          Checking connection...
+        </div>
       </div>
+    );
+  }
+
+  if (existingConnection?.status === "accepted") {
+    return (
+      <Link
+        href={`/connections/${existingConnection.id}`}
+        className="sticky top-24 block border border-[var(--color-champagne)] bg-[var(--color-champagne)]/10 p-6 rounded-sm text-center text-[var(--color-ivory)] font-light hover:bg-[var(--color-champagne)]/20 hover:border-[var(--color-champagne)]/60 transition"
+      >
+        <span className="text-sm tracking-widest uppercase text-[var(--color-champagne)] block mb-1">
+          Connected
+        </span>
+        <span className="text-lg">
+          Continue chatting with {escortName}
+        </span>
+      </Link>
     );
   }
 
@@ -158,14 +212,25 @@ export default function ConnectForm({
     );
   }
 
+  const credits = user?.credits ?? 0;
+  const canConnect = credits >= CONNECT_CREDITS;
+
   return (
     <div className="sticky top-24 border border-[var(--color-border)] bg-[var(--color-charcoal)] p-8 rounded-sm">
       <h2 className="text-lg font-light text-[var(--color-ivory)] tracking-wide mb-4">
         Connect with {escortName}
       </h2>
-      <p className="text-[var(--color-silver)] font-light text-sm mb-6">
-        Send a connection request. You can include one intro message here—you&apos;ll be able to chat without limit once they accept.
+      <p className="text-[var(--color-silver)] font-light text-sm mb-2">
+        Send a connection request. You can include one intro message here—you&apos;ll be able to chat once they accept (1 credit per message).
       </p>
+      <p className="text-xs text-[var(--color-muted)] mb-6">
+        Cost: <span className="text-[var(--color-champagne)]">{CONNECT_CREDITS} credits</span>. Your balance: <span className="font-medium">{credits} credits</span>.
+      </p>
+      {!canConnect && (
+        <div className="p-3 text-sm text-amber-200/90 border border-amber-500/30 bg-amber-500/10 rounded-sm mb-4">
+          You need {CONNECT_CREDITS} credits to connect. Get more credits from your account.
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="space-y-5">
         {error && (
           <div className="p-3 text-sm text-red-300/90 border border-red-500/30 bg-red-500/10 rounded-sm">
@@ -185,7 +250,7 @@ export default function ConnectForm({
         </div>
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || !canConnect}
           className="w-full py-3.5 text-sm tracking-widest uppercase border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)] hover:text-[var(--color-obsidian)] transition disabled:opacity-50 disabled:cursor-not-allowed rounded-sm"
         >
           {loading ? "Sending..." : "Connect"}

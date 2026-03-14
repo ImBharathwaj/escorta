@@ -6,6 +6,7 @@ import { AgeGate } from "@/components/AgeGate";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { BookingNotification } from "@/components/BookingNotification";
 import { ChatWidget } from "@/components/ChatWidget";
+import { SignupPromoPopup } from "@/components/SignupPromoPopup";
 
 const cormorant = Cormorant_Garamond({
   subsets: ["latin"],
@@ -36,6 +37,7 @@ export default function RootLayout({
           <main className="min-h-screen">{children}</main>
           <BookingNotification />
           <ChatWidget />
+          <SignupPromoPopup />
         </AuthProvider>
       </body>
     </html>

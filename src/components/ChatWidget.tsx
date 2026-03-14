@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { BlurredImage } from "@/components/BlurredImage";
 
 const CHAT_SEEN_KEY = "escorta_chat_seen";
 const POLL_INTERVAL_MS = 4000;
@@ -11,6 +12,9 @@ const MESSAGES_POLL_MS = 3000;
 type Connection = {
   id: string;
   otherName: string;
+  otherImageUrl?: string | null;
+  otherPhotoId?: string | null;
+  canSend?: boolean;
   lastMessage: {
     id: string;
     message: string;
@@ -47,7 +51,7 @@ function setSeen(connectionId: string, lastMessageId: string) {
 
 export function ChatWidget() {
   const pathname = usePathname();
-  const { user, token } = useAuth();
+  const { user, token, refreshUser } = useAuth();
   const [open, setOpen] = useState(false);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(false);
@@ -56,17 +60,39 @@ export function ChatWidget() {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState("");
+  const [canSend, setCanSend] = useState(true);
   const [, setSeenVersion] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const prevConnectionIdsRef = useRef<Set<string>>(new Set());
+  const [acceptanceToast, setAcceptanceToast] = useState<{ name: string; id: string } | null>(null);
+
   const fetchConnections = useCallback(() => {
     if (!token || !user) return;
-    fetch("/api/connections", { headers: { Authorization: `Bearer ${token}` } })
+    fetch("/api/connections", {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    })
       .then((r) => r.json())
-      .then((data) => setConnections(data.connections || []))
+      .then((data) => {
+        const list: Connection[] = data.connections || [];
+        if (user?.role === "client" && prevConnectionIdsRef.current.size > 0) {
+          const added = list.find((c) => !prevConnectionIdsRef.current.has(c.id));
+          if (added) setAcceptanceToast({ name: added.otherName, id: added.id });
+        }
+        prevConnectionIdsRef.current = new Set(list.map((c) => c.id));
+        setConnections(list);
+      })
       .catch(() => setConnections([]))
       .finally(() => setLoading(false));
   }, [token, user]);
+
+  useEffect(() => {
+    if (!acceptanceToast) return;
+    const t = setTimeout(() => setAcceptanceToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [acceptanceToast]);
 
   useEffect(() => {
     if (!token || (user?.role !== "client" && user?.role !== "escort")) return;
@@ -95,7 +121,10 @@ export function ChatWidget() {
       cache: "no-store",
     })
       .then((r) => r.json())
-      .then((data) => setMessages(data.messages || []))
+      .then((data) => {
+        setMessages(data.messages || []);
+        if (typeof data.canSend === "boolean") setCanSend(data.canSend);
+      })
       .catch(() => {})
       .finally(() => setMessagesLoading(false));
   }, [selectedConn?.id, token]);
@@ -103,9 +132,11 @@ export function ChatWidget() {
   useEffect(() => {
     if (!selectedConn) {
       setMessages([]);
+      setCanSend(true);
       return;
     }
     setMessagesLoading(true);
+    setCanSend(true);
     fetchMessages();
     const id = setInterval(fetchMessages, MESSAGES_POLL_MS);
     return () => clearInterval(id);
@@ -124,7 +155,8 @@ export function ChatWidget() {
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
-    if (!input.trim() || !token || !selectedConn || sending) return;
+    if (!input.trim() || !token || !selectedConn || sending || !canSend) return;
+    setSendError("");
     setSending(true);
     try {
       const res = await fetch(`/api/bookings/${selectedConn.id}/messages`, {
@@ -140,6 +172,11 @@ export function ChatWidget() {
         setMessages((prev) => [...prev, msg]);
         setInput("");
         fetchConnections();
+        refreshUser();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setSendError(data.error || "Failed to send");
+        if (res.status === 402) refreshUser();
       }
     } finally {
       setSending(false);
@@ -171,6 +208,17 @@ export function ChatWidget() {
 
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
+      {acceptanceToast && (
+        <div
+          role="alert"
+          className="mb-2 px-4 py-3 border border-[var(--color-champagne)] bg-[var(--color-obsidian)] shadow-lg text-sm"
+        >
+          <p className="text-[var(--color-ivory)]">
+            <span className="text-[var(--color-champagne)]">{acceptanceToast.name}</span>
+            {" "}accepted your connection request. You can chat now.
+          </p>
+        </div>
+      )}
       {showNewMessageToast && unreadConnections[0] && (
         <div
           role="alert"
@@ -185,6 +233,7 @@ export function ChatWidget() {
           <button
             onClick={() => {
               setSelectedConn(unreadConnections[0]);
+              setCanSend(unreadConnections[0].canSend ?? true);
               setOpen(true);
               setShowNewMessageToast(false);
             }}
@@ -212,6 +261,15 @@ export function ChatWidget() {
                 >
                   ←
                 </button>
+                <div className="w-9 h-9 rounded-full overflow-hidden border border-[var(--color-border)] bg-[var(--color-slate)] flex-shrink-0 flex items-center justify-center">
+                  {selectedConn.otherPhotoId ? (
+                    <BlurredImage photoId={selectedConn.otherPhotoId} alt="" className="w-full h-full object-cover" />
+                  ) : selectedConn.otherImageUrl ? (
+                    <img src={selectedConn.otherImageUrl} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-sm text-[var(--color-muted)]">—</span>
+                  )}
+                </div>
                 <h3 className="text-sm font-medium text-[var(--color-ivory)] truncate flex-1">
                   {selectedConn.otherName}
                 </h3>
@@ -246,26 +304,37 @@ export function ChatWidget() {
                 )}
                 <div ref={messagesEndRef} />
               </div>
-              <form
-                onSubmit={handleSend}
-                className="p-3 border-t border-[var(--color-border)] flex gap-2 flex-shrink-0"
-              >
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Type a message..."
-                  maxLength={2000}
-                  className="flex-1 min-w-0 px-3 py-2 text-sm bg-[var(--color-charcoal)] border border-[var(--color-border)] text-[var(--color-ivory)] focus:border-[var(--color-champagne)]/50 rounded"
-                />
-                <button
-                  type="submit"
-                  disabled={!input.trim() || sending}
-                  className="px-4 py-2 text-xs tracking-widest uppercase border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)] hover:text-[var(--color-obsidian)] transition disabled:opacity-50 rounded"
+              <div className="p-3 border-t border-[var(--color-border)] flex flex-col gap-2 flex-shrink-0">
+                {!canSend && (
+                  <p className="text-xs text-[var(--color-silver)]">No longer connected. Message history for reference only.</p>
+                )}
+                <form
+                  onSubmit={handleSend}
+                  className={canSend ? "" : "opacity-60 pointer-events-none"}
                 >
-                  Send
-                </button>
-              </form>
+                  {sendError && (
+                    <p className="text-xs text-red-300/90">{sendError}</p>
+                  )}
+                  <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder={canSend ? "Type a message..." : "Sending disabled"}
+                    maxLength={2000}
+                    disabled={!canSend}
+                    className="flex-1 min-w-0 px-3 py-2 text-sm bg-[var(--color-charcoal)] border border-[var(--color-border)] text-[var(--color-ivory)] focus:border-[var(--color-champagne)]/50 rounded disabled:opacity-70"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!canSend || !input.trim() || sending}
+                    className="px-4 py-2 text-xs tracking-widest uppercase border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)] hover:text-[var(--color-obsidian)] transition disabled:opacity-50 rounded"
+                  >
+                    Send
+                  </button>
+                  </div>
+                </form>
+              </div>
             </>
           ) : (
             <>
@@ -298,20 +367,38 @@ export function ChatWidget() {
                         c.lastMessage &&
                         !c.lastMessage.fromMe &&
                         getSeenMap()[c.id] !== c.lastMessage.id;
+                      const handleSelect = () => {
+                        if (c.lastMessage) {
+                          setSeen(c.id, c.lastMessage.id);
+                          setSeenVersion((v) => v + 1);
+                        }
+                        setSelectedConn(c);
+                        setCanSend(c.canSend ?? true);
+                      };
                       return (
-                        <button
+                        <div
                           key={c.id}
-                          type="button"
-                          onClick={() => {
-                            if (c.lastMessage) {
-                              setSeen(c.id, c.lastMessage.id);
-                              setSeenVersion((v) => v + 1);
+                          role="button"
+                          tabIndex={0}
+                          onClick={handleSelect}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              handleSelect();
                             }
-                            setSelectedConn(c);
                           }}
-                          className="w-full text-left block p-4 hover:bg-[var(--color-charcoal)] transition"
+                          className="w-full text-left block p-4 hover:bg-[var(--color-charcoal)] transition cursor-pointer"
                         >
-                          <div className="flex justify-between items-start gap-2">
+                          <div className="flex justify-between items-start gap-3">
+                            <div className="w-10 h-10 rounded-full overflow-hidden border border-[var(--color-border)] bg-[var(--color-slate)] flex-shrink-0 flex items-center justify-center">
+                              {c.otherPhotoId ? (
+                                <BlurredImage photoId={c.otherPhotoId} alt="" className="w-full h-full object-cover" />
+                              ) : c.otherImageUrl ? (
+                                <img src={c.otherImageUrl} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <span className="text-sm text-[var(--color-muted)]">—</span>
+                              )}
+                            </div>
                             <div className="min-w-0 flex-1">
                               <p
                                 className={`text-sm font-medium truncate ${
@@ -331,7 +418,7 @@ export function ChatWidget() {
                               <span className="flex-shrink-0 w-2 h-2 rounded-full bg-[var(--color-champagne)] mt-1.5" />
                             )}
                           </div>
-                        </button>
+                        </div>
                       );
                     })}
                   </div>

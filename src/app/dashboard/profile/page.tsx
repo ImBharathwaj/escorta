@@ -58,7 +58,7 @@ type UserProfile = {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, token, setUser } = useAuth();
+  const { user, token, setUser, authReady, logout } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -83,8 +83,12 @@ export default function ProfilePage() {
   const [photoError, setPhotoError] = useState("");
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
+    if (!authReady) return;
     if (!token) {
       router.push("/login?redirect=/dashboard/profile");
       return;
@@ -96,7 +100,7 @@ export default function ProfilePage() {
     } else if (user != null) {
       setLoading(false);
     }
-  }, [token, user, router]);
+  }, [token, user, authReady, router]);
 
   useEffect(() => {
     if (!loading && user?.role !== "client" && user?.role !== "escort") {
@@ -267,6 +271,33 @@ export default function ProfilePage() {
     }
   }
 
+  async function handleDeleteAccount() {
+    if (!token || user?.role !== "client") return;
+    setDeleteError("");
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/users/me/delete-account", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setDeleteError(data.error || "Failed to delete account");
+        return;
+      }
+      logout();
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("escorta_chat_seen");
+        window.location.href = "/?deleted=1";
+        return;
+      }
+      router.push("/?deleted=1");
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  }
+
   async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files?.length || !profile || !token) return;
@@ -416,6 +447,20 @@ export default function ProfilePage() {
                 {saving ? "Saving..." : "Save changes"}
               </button>
             </form>
+
+            <div className="mt-16 pt-12 border-t border-[var(--color-border)]">
+              <h2 className="text-sm font-light text-[var(--color-silver)] mb-1">Delete account</h2>
+              <p className="text-xs text-[var(--color-muted)] mb-3">
+                Permanently delete your account. You will not be able to sign in again. Your email may be retained for our records.
+              </p>
+              <button
+                type="button"
+                onClick={() => { setDeleteError(""); setShowDeleteConfirm(true); }}
+                className="text-sm tracking-widest uppercase text-red-300 hover:text-red-200 transition"
+              >
+                Delete my account
+              </button>
+            </div>
           </>
         ) : (
           <>
@@ -653,6 +698,38 @@ export default function ProfilePage() {
               </button>
             </form>
           </>
+        )}
+
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70">
+            <div className="bg-[var(--color-charcoal)] border border-[var(--color-border)] rounded-sm p-6 max-w-md w-full">
+              <h3 className="text-lg font-light text-[var(--color-ivory)] mb-2">Delete account?</h3>
+              <p className="text-sm text-[var(--color-silver)] font-light mb-4">
+                This cannot be undone. You will be signed out and will not be able to log in with this account again.
+              </p>
+              {deleteError && (
+                <p className="text-sm text-red-300 mb-3">{deleteError}</p>
+              )}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setShowDeleteConfirm(false); setDeleteError(""); }}
+                  disabled={deleting}
+                  className="px-4 py-2 text-sm border border-[var(--color-border)] text-[var(--color-silver)] hover:bg-[var(--color-obsidian)] transition disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteAccount}
+                  disabled={deleting}
+                  className="px-4 py-2 text-sm bg-red-600/80 text-white hover:bg-red-600 transition disabled:opacity-50"
+                >
+                  {deleting ? "Deleting…" : "Yes, delete my account"}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
