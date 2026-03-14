@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+@theme inline {
+  /* Premium luxury palette — dark, seductive */
+  --color-obsidian: #080808;
+  --color-charcoal: #111111;
+  --color-slate: #1a1a1a;
+  --color-border: #2a2a2a;
+  --color-muted: #6b6b6b;
+  --color-silver: #9a9a9a;
+  --color-champagne: #c9a962;
+  --color-champagne-light: #e0c98a;
+  --color-champagne-dim: rgba(201, 169, 98, 0.15);
+  --color-ivory: #faf9f7;
+  --color-pearl: #e8e6e3;
+
+  --color-background: var(--color-obsidian);
+  --color-foreground: var(--color-ivory);
+  --color-accent: var(--color-champagne);
+  --color-accent-hover: var(--color-champagne-light);
+
+  --font-heading: var(--font-heading);
+  --font-body: var(--font-body);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(ellipse 80% 50% at 50% -20%, var(--color-champagne-dim), transparent),
+    var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-body), system-ui, -apple-system, sans-serif;
+  font-weight: 300;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-heading), "Times New Roman", serif;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+a, button {
+  transition: color 200ms ease, background-color 200ms ease,
+    border-color 200ms ease, opacity 200ms ease, transform 200ms ease,
+    box-shadow 200ms ease;
+}
+
+/* Refined focus states */
+input:focus, textarea:focus, select:focus, button:focus-visible {
+  outline: none;
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--color-muted);
+}
+
+/* Subtle fade-in animation */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.6s ease-out forwards;
+}
+
+.animate-delay-1 { animation-delay: 0.1s; }
+.animate-delay-2 { animation-delay: 0.2s; }
+.animate-delay-3 { animation-delay: 0.3s; }
+.animate-delay-4 { animation-delay: 0.4s; }
