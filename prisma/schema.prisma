@@ -19,14 +19,31 @@ model User {
   isBanned        Boolean  @default(false) @map("is_banned")
   isPremiumMember Boolean  @default(false) @map("is_premium_member")
   credits         Int      @default(0)
+  emailVerifiedAt DateTime? @map("email_verified_at")
   deletedAt       DateTime? @map("deleted_at")
   lastLogin       DateTime? @map("last_login")
+  lastActiveAt    DateTime? @map("last_active_at")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  escortProfile EscortProfile?
-  bookingsAsClient Booking[] @relation("ClientBookings")
-  sentMessages Message[]
+  escortProfile     EscortProfile?
+  bookingsAsClient  Booking[]       @relation("ClientBookings")
+  sentMessages      Message[]
+  sexterMessages    SexterMessage[]
+  sexterSessionsAsClient SexterSession[] @relation("SexterClient")
+  emailVerificationTokens EmailVerificationToken[]
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
 }
 
 model EscortProfile {
@@ -52,6 +69,7 @@ model EscortProfile {
   adultServices  EscortAdultService[]
   availability   EscortAvailability[]
   bookings       Booking[]
+  sexterSessions SexterSession[]
 }
 
 model Service {
@@ -118,17 +136,45 @@ model Booking {
   message         String?
   createdAt       DateTime @default(now()) @map("created_at")
 
-  messages Message[]
+  messages       Message[]
+  sexterSessions SexterSession[]
 }
 
 model Message {
   id        String   @id @default(uuid())
   bookingId String   @map("booking_id")
   senderId  String   @map("sender_id")
+  message   String
   booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   sender    User     @relation(fields: [senderId], references: [id])
-  message   String
   createdAt DateTime @default(now()) @map("created_at")
+}
+
+// Session-based sexter: standalone from connections. clientId+escortId for new flow; bookingId legacy.
+model SexterSession {
+  id        String         @id @default(uuid())
+  bookingId String?        @map("booking_id")
+  booking   Booking?       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  clientId  String?        @map("client_id")
+  client    User?          @relation("SexterClient", fields: [clientId], references: [id], onDelete: Cascade)
+  escortId  String?        @map("escort_id")
+  escort    EscortProfile? @relation(fields: [escortId], references: [id], onDelete: Cascade)
+  createdAt DateTime       @default(now()) @map("created_at")
+  expiresAt DateTime       @default(now()) @map("expires_at")
+  endedAt   DateTime?      @map("ended_at")
+  messages  SexterMessage[]
+}
+
+model SexterMessage {
+  id              String        @id @default(uuid())
+  sexterSessionId String        @map("sexter_session_id")
+  session         SexterSession @relation(fields: [sexterSessionId], references: [id], onDelete: Cascade)
+  senderId        String        @map("sender_id")
+  sender          User          @relation(fields: [senderId], references: [id])
+  message         String        @default("")
+  attachmentUrl   String?       @map("attachment_url")
+  attachmentType  String?       @map("attachment_type") // "image" | "video"
+  createdAt       DateTime     @default(now()) @map("created_at")
 }
 
 // Stores email of deleted accounts for company records; not exposed to clients.

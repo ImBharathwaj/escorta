@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
 
   await prisma.user.update({
     where: { id: user.id },
-    data: { lastLogin: new Date(), updatedAt: new Date() },
+    data: { lastLogin: new Date(), lastActiveAt: new Date(), updatedAt: new Date() },
   });
 
   const token = jwt.sign(
@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
       avatarUrl: user.avatarUrl ?? null,
       isPremiumMember: user.isPremiumMember ?? false,
       credits: user.credits ?? 0,
+      emailVerifiedAt: user.emailVerifiedAt ?? null,
     },
     token,
   });

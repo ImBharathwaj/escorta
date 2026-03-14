@@ -13,6 +13,15 @@ type Message = {
   sender: { id: string; role: string };
 };
 
+function mergeMessages(prev: Message[], next: Message[]): Message[] {
+  if (!next?.length) return prev;
+  if (!prev?.length) return next;
+  const byId = new Map(prev.map((m) => [m.id, m]));
+  const merged = next.map((m) => byId.get(m.id) ?? m);
+  if (merged.length === prev.length && merged.every((m, i) => m === prev[i])) return prev;
+  return merged;
+}
+
 export default function ChatPage() {
   const params = useParams();
   const router = useRouter();
@@ -28,6 +37,7 @@ export default function ChatPage() {
   const [messageError, setMessageError] = useState("");
   const [canSend, setCanSend] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const prevMessageCountRef = useRef(0);
 
   useEffect(() => {
     if (!authReady) return;
@@ -42,7 +52,9 @@ export default function ChatPage() {
     fetch("/api/bookings", { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then((data) => {
-        const conn = (data.bookings || []).find((b: { id: string; status: string }) => b.id === id);
+        const conn = (data.bookings || []).find(
+          (b: { id: string; status: string }) => b.id === id
+        );
         if (!conn) {
           router.push("/dashboard");
           return;
@@ -57,7 +69,9 @@ export default function ChatPage() {
           setOtherPhotoId(conn.escort?.primaryPhotoId ?? null);
           setOtherImageUrl(null);
         } else {
-          setOtherName((conn.client?.displayName || conn.client?.email) ?? "Member");
+          setOtherName(
+            (conn.client?.displayName || conn.client?.email) ?? "Member"
+          );
           setOtherImageUrl(conn.client?.avatarSignedUrl ?? null);
           setOtherPhotoId(null);
         }
@@ -67,6 +81,8 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!token || !id) return;
+    setLoading(true);
+    prevMessageCountRef.current = 0;
     const fetchMessages = () => {
       fetch(`/api/bookings/${id}/messages?t=${Date.now()}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -74,19 +90,24 @@ export default function ChatPage() {
       })
         .then((r) => r.json())
         .then((data) => {
-          setMessages(data.messages || []);
+          const next = data.messages || [];
+          setMessages((prev) => mergeMessages(prev, next));
           if (typeof data.canSend === "boolean") setCanSend(data.canSend);
         })
         .catch(() => {})
         .finally(() => setLoading(false));
     };
     fetchMessages();
-    const interval = setInterval(fetchMessages, 3000);
+    const interval = setInterval(fetchMessages, 10000);
     return () => clearInterval(interval);
   }, [token, id]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const prev = prevMessageCountRef.current;
+    prevMessageCountRef.current = messages.length;
+    if (messages.length > prev) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -134,9 +155,19 @@ export default function ChatPage() {
           <div className="p-4 border-b border-[var(--color-border)] flex items-center gap-4">
             <div className="w-12 h-12 rounded-full overflow-hidden border border-[var(--color-border)] bg-[var(--color-slate)] flex-shrink-0 flex items-center justify-center">
               {otherPhotoId ? (
-                <BlurredImage photoId={otherPhotoId} alt="" className="w-full h-full object-cover" />
+                <BlurredImage
+                  photoId={otherPhotoId}
+                  alt=""
+                  className="w-full h-full object-cover"
+                />
               ) : otherImageUrl ? (
-                <img src={otherImageUrl} alt="" className="w-full h-full object-cover" />
+                <img
+                  src={otherImageUrl}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  draggable={false}
+                  onContextMenu={(e) => e.preventDefault()}
+                />
               ) : (
                 <span className="text-lg text-[var(--color-muted)]">—</span>
               )}
@@ -146,14 +177,16 @@ export default function ChatPage() {
                 Chat with {otherName || "..."}
               </h1>
               <p className="text-xs text-[var(--color-silver)] mt-1">
-                Arrange meetups and stay in touch
+                For connection and arranging meetups
               </p>
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {loading ? (
-              <p className="text-[var(--color-silver)] font-light text-sm">Loading...</p>
+              <p className="text-[var(--color-silver)] font-light text-sm">
+                Loading...
+              </p>
             ) : messages.length === 0 ? (
               <p className="text-[var(--color-muted)] font-light text-sm">
                 No messages yet. Say hello to start the conversation.
@@ -171,7 +204,9 @@ export default function ChatPage() {
                         : "bg-[var(--color-slate)] border border-[var(--color-border)] text-[var(--color-pearl)]"
                     }`}
                   >
-                    <p className="text-sm font-light whitespace-pre-wrap">{m.message}</p>
+                    <p className="text-sm font-light whitespace-pre-wrap">
+                      {m.message}
+                    </p>
                     <p className="text-[10px] text-[var(--color-muted)] mt-1">
                       {new Date(m.createdAt).toLocaleTimeString()}
                     </p>
@@ -185,10 +220,14 @@ export default function ChatPage() {
           <div className="p-4 border-t border-[var(--color-border)]">
             {!canSend && (
               <p className="text-sm text-[var(--color-silver)] font-light mb-3">
-                No longer connected. Message history is shown for reference only.
+                No longer connected. Message history is shown for reference
+                only.
               </p>
             )}
-            <form onSubmit={handleSubmit} className={canSend ? "" : "opacity-60 pointer-events-none"}>
+            <form
+              onSubmit={handleSubmit}
+              className={canSend ? "" : "opacity-60 pointer-events-none"}
+            >
               {messageError && (
                 <p className="text-sm text-red-300/90 mb-2">{messageError}</p>
               )}
@@ -197,7 +236,9 @@ export default function ChatPage() {
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder={canSend ? "Type a message..." : "Sending disabled"}
+                  placeholder={
+                    canSend ? "Type a message..." : "Sending disabled"
+                  }
                   maxLength={2000}
                   disabled={!canSend}
                   className="flex-1 px-4 py-3 bg-[var(--color-charcoal)] border border-[var(--color-border)] text-[var(--color-ivory)] focus:border-[var(--color-champagne)]/50 transition rounded-sm disabled:opacity-70"

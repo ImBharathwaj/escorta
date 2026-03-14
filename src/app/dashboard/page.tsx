@@ -330,7 +330,7 @@ function DashboardContent() {
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <div className="w-10 h-10 rounded-full overflow-hidden border border-[var(--color-border)] bg-[var(--color-slate)] flex-shrink-0 flex items-center justify-center">
                           {b.client?.avatarSignedUrl ? (
-                            <img src={b.client.avatarSignedUrl} alt="" className="w-full h-full object-cover" />
+                            <img src={b.client.avatarSignedUrl} alt="" className="w-full h-full object-cover" draggable={false} onContextMenu={(e) => e.preventDefault()} />
                           ) : (
                             <span className="text-sm text-[var(--color-muted)]">—</span>
                           )}

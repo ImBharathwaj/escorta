@@ -89,11 +89,6 @@ export async function POST(
     return NextResponse.json({ error: "Connection not found" }, { status: 404 });
   }
 
-  const { message } = await req.json();
-  if (!message || typeof message !== "string" || !message.trim()) {
-    return NextResponse.json({ error: "Message required" }, { status: 400 });
-  }
-
   if (payload.role === "client") {
     const clientUser = await prisma.user.findUnique({
       where: { id: payload.userId },
@@ -106,6 +101,11 @@ export async function POST(
         { status: 402 }
       );
     }
+  }
+
+  const { message } = await req.json();
+  if (!message || typeof message !== "string" || !message.trim()) {
+    return NextResponse.json({ error: "Message required" }, { status: 400 });
   }
 
   const msg = await prisma.message.create({

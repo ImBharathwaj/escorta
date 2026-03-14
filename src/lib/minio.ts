@@ -4,6 +4,8 @@ import {
   GetObjectCommand,
   CreateBucketCommand,
   HeadBucketCommand,
+  ListObjectsV2Command,
+  DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -88,6 +90,55 @@ export async function uploadUserAvatar(
     })
   );
   return `${ENDPOINT}/${BUCKET}/${key}`;
+}
+
+/** Upload image or video for sexter session. Key: chat/sexter/{sessionId}/{senderId}_{timestamp}.{ext} — deleted when session ends. */
+export async function uploadSexterMedia(
+  sessionId: string,
+  senderId: string,
+  buffer: Buffer,
+  filename: string,
+  contentType: string
+): Promise<string> {
+  const client = getClient();
+  await ensureBucket();
+  const ext = filename.split(".").pop() || (contentType.startsWith("video/") ? "mp4" : "jpg");
+  const key = `chat/sexter/${sessionId}/${senderId}_${Date.now()}.${ext}`;
+  await client.send(
+    new PutObjectCommand({
+      Bucket: BUCKET,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+    })
+  );
+  return `${ENDPOINT}/${BUCKET}/${key}`;
+}
+
+/** Delete all objects under chat/sexter/{sessionId}/ when a sexter session ends. */
+export async function deleteSexterSessionMedia(sessionId: string): Promise<void> {
+  const client = getClient();
+  const prefix = `chat/sexter/${sessionId}/`;
+  let continuationToken: string | undefined;
+  do {
+    const list = await client.send(
+      new ListObjectsV2Command({
+        Bucket: BUCKET,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      })
+    );
+    const keys = (list.Contents ?? []).map((o) => o.Key).filter((k): k is string => !!k);
+    if (keys.length > 0) {
+      await client.send(
+        new DeleteObjectsCommand({
+          Bucket: BUCKET,
+          Delete: { Objects: keys.map((Key) => ({ Key })), Quiet: true },
+        })
+      );
+    }
+    continuationToken = list.IsTruncated ? list.NextContinuationToken : undefined;
+  } while (continuationToken);
 }
 
 /**

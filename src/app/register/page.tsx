@@ -38,7 +38,16 @@ export default function RegisterPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Registration failed");
       login(data.token, data.user);
-      router.push(role === "escort" ? "/dashboard" : "/");
+      if (data.verificationUrl) {
+        setError("");
+        window.location.href = data.verificationUrl;
+        return;
+      }
+      if (data.user?.email && !data.user?.emailVerifiedAt) {
+        router.push("/dashboard?verify=1");
+      } else {
+        router.push(role === "escort" ? "/dashboard" : "/");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {

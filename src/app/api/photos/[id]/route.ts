@@ -89,7 +89,7 @@ export async function GET(
       .jpeg({ quality: 50 })
       .toBuffer();
 
-    return new NextResponse(blurred, {
+    return new NextResponse(new Uint8Array(blurred), {
       headers: {
         "Content-Type": "image/jpeg",
         "Cache-Control": "public, max-age=3600",

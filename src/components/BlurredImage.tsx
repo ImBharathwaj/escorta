@@ -100,14 +100,27 @@ export function BlurredImage({ photoId, alt, className = "", aspect = "card" }: 
     );
   }
 
+  const noDownloadProps = {
+    draggable: false,
+    onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+    style: { userSelect: "none", WebkitUserSelect: "none" } as React.CSSProperties,
+  };
+
   const showFull = isPremium || isFullImage;
   if (showFull && blobUrl) {
     return (
-      <img
-        src={blobUrl}
-        alt={alt}
-        className={`w-full h-full object-cover ${className}`}
-      />
+      <div
+        className={`${aspectClass} ${className}`}
+        onContextMenu={(e) => e.preventDefault()}
+        style={{ userSelect: "none", WebkitUserSelect: "none" }}
+      >
+        <img
+          src={blobUrl}
+          alt={alt}
+          className="w-full h-full object-cover pointer-events-none"
+          {...noDownloadProps}
+        />
+      </div>
     );
   }
 
@@ -122,13 +135,19 @@ export function BlurredImage({ photoId, alt, className = "", aspect = "card" }: 
   }
 
   return (
-    <div className={`relative overflow-hidden ${aspectClass} ${className}`}>
+    <div
+      className={`relative overflow-hidden ${aspectClass} ${className}`}
+      onContextMenu={(e) => e.preventDefault()}
+      style={{ userSelect: "none", WebkitUserSelect: "none" }}
+    >
       {blobUrl && (
         <img
           src={blobUrl}
           alt=""
-          className="absolute inset-0 w-full h-full object-cover"
+          className="absolute inset-0 w-full h-full object-cover pointer-events-none"
           aria-hidden
+          draggable={false}
+          onContextMenu={(e) => e.preventDefault()}
         />
       )}
       <div className="absolute inset-0 flex flex-col items-center justify-center bg-[var(--color-obsidian)]/60">

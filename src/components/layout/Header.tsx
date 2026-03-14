@@ -23,6 +23,14 @@ export function Header() {
             </span>
           )}
           {user?.role !== "escort" && <CompanionsLink />}
+          {(user?.role === "client" || user?.role === "escort") && (
+            <Link
+              href="/sexter"
+              className="text-sm tracking-widest uppercase text-[var(--color-silver)] hover:text-[var(--color-ivory)] transition"
+            >
+              Sexter
+            </Link>
+          )}
           {user?.role === "client" && !user.isPremiumMember && (
             <Link
               href="/membership"

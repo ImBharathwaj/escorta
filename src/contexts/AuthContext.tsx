@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 
-type User = { id: string; role: string; email: string | null; phone: string | null; displayName?: string | null; avatarUrl?: string | null; isPremiumMember?: boolean; credits?: number };
+type User = { id: string; role: string; email: string | null; phone: string | null; displayName?: string | null; avatarUrl?: string | null; isPremiumMember?: boolean; credits?: number; emailVerifiedAt?: string | null };
 
 type AuthContextType = {
   user: User | null;
