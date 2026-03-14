@@ -118,6 +118,8 @@ export default function MemberProfilePage({
                     src={member.avatarSignedUrl}
                     alt=""
                     className="w-full h-full object-cover"
+                    draggable={false}
+                    onContextMenu={(e) => e.preventDefault()}
                   />
                 ) : (
                   <span className="text-2xl text-[var(--color-muted)]">—</span>

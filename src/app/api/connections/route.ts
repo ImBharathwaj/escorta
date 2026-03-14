@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
 import { getSignedImageUrl } from "@/lib/minio";
+import { ONLINE_WINDOW_MS } from "@/lib/credits";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
     const bookings = await prisma.booking.findMany({
       where: { escortId: profile.id, status: "accepted" },
       include: {
-        client: { select: { id: true, email: true, displayName: true, avatarUrl: true } },
+        client: { select: { id: true, email: true, displayName: true, avatarUrl: true, lastActiveAt: true } },
         messages: {
           orderBy: { createdAt: "desc" },
           take: 1,
@@ -48,12 +49,18 @@ export async function GET(req: NextRequest) {
           : null,
       }))
     );
+    const now = Date.now();
     const sorted = withAvatars
-      .map((b) => ({
+      .map((b) => {
+        const lastActiveAt = b.client?.lastActiveAt?.getTime();
+        const online = !!lastActiveAt && now - lastActiveAt < ONLINE_WINDOW_MS;
+        return {
         id: b.id,
         otherName: (b.client?.displayName || b.client?.email) || "Member",
         otherId: b.client?.id,
         otherImageUrl: b.clientAvatarSignedUrl ?? null,
+        canSend: true,
+        online,
         lastMessage: b.messages[0]
           ? {
               id: b.messages[0].id,
@@ -62,7 +69,8 @@ export async function GET(req: NextRequest) {
               fromMe: b.messages[0].senderId === payload.userId,
             }
           : null,
-      }))
+      };
+      })
       .sort((a, b) => {
         const aTime = a.lastMessage?.createdAt ?? "";
         const bTime = b.lastMessage?.createdAt ?? "";
@@ -86,7 +94,10 @@ export async function GET(req: NextRequest) {
       where: { clientId: payload.userId, status: { in: ["accepted", "cancelled"] } },
       include: {
         escort: {
-          include: { photos: { orderBy: [{ isPrimary: "desc" }], take: 1 } },
+          include: {
+            user: { select: { lastActiveAt: true } },
+            photos: { orderBy: [{ isPrimary: "desc" }], take: 1 },
+          },
         },
         messages: {
           orderBy: { createdAt: "desc" },
@@ -95,22 +106,28 @@ export async function GET(req: NextRequest) {
       },
       orderBy: { createdAt: "desc" },
     });
+    const now = Date.now();
     const sorted = bookings
-      .map((b) => ({
-        id: b.id,
-        otherName: b.escort?.aliasName ?? "Companion",
-        otherId: b.escort?.id,
-        otherPhotoId: b.escort?.photos?.[0]?.id ?? null,
-        canSend: b.status === "accepted",
-        lastMessage: b.messages[0]
-          ? {
-              id: b.messages[0].id,
-              message: b.messages[0].message,
-              createdAt: b.messages[0].createdAt,
-              fromMe: b.messages[0].senderId === payload.userId,
-            }
-          : null,
-      }))
+      .map((b) => {
+        const lastActiveAt = b.escort?.user?.lastActiveAt?.getTime();
+        const online = !!lastActiveAt && now - lastActiveAt < ONLINE_WINDOW_MS;
+        return {
+          id: b.id,
+          otherName: b.escort?.aliasName ?? "Companion",
+          otherId: b.escort?.id,
+          otherPhotoId: b.escort?.photos?.[0]?.id ?? null,
+          canSend: b.status === "accepted",
+          online,
+          lastMessage: b.messages[0]
+            ? {
+                id: b.messages[0].id,
+                message: b.messages[0].message,
+                createdAt: b.messages[0].createdAt,
+                fromMe: b.messages[0].senderId === payload.userId,
+              }
+            : null,
+        };
+      })
       .sort((a, b) => {
         if (a.canSend !== b.canSend) return a.canSend ? -1 : 1;
         const aTime = a.lastMessage?.createdAt ?? "";

@@ -381,6 +381,8 @@ export default function ProfilePage() {
                       src={userProfile.avatarSignedUrl}
                       alt=""
                       className="w-full h-full object-cover"
+                      draggable={false}
+                      onContextMenu={(e) => e.preventDefault()}
                     />
                   ) : (
                     <span className="text-3xl text-[var(--color-muted)]">—</span>
@@ -471,11 +473,13 @@ export default function ProfilePage() {
                 </h2>
                 <div className="flex flex-wrap gap-4">
                   {(profile.photos ?? []).map((p) => (
-                    <div key={p.id} className="relative">
+                    <div key={p.id} className="relative" onContextMenu={(e) => e.preventDefault()}>
                       <img
                         src={p.imageUrl}
                         alt=""
                         className="w-24 h-24 object-cover border border-[var(--color-border)]"
+                        draggable={false}
+                        onContextMenu={(e) => e.preventDefault()}
                       />
                       {p.isPrimary && (
                         <span className="absolute bottom-1 left-1 text-[10px] px-1.5 py-0.5 bg-[var(--color-champagne)] text-[var(--color-obsidian)]">

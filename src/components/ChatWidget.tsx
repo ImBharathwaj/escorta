@@ -7,7 +7,7 @@ import { BlurredImage } from "@/components/BlurredImage";
 
 const CHAT_SEEN_KEY = "escorta_chat_seen";
 const POLL_INTERVAL_MS = 4000;
-const MESSAGES_POLL_MS = 3000;
+const MESSAGES_POLL_MS = 10000;
 
 type Connection = {
   id: string;
@@ -29,6 +29,15 @@ type Message = {
   createdAt: string;
   sender: { id: string; role: string };
 };
+
+function mergeMessages(prev: Message[], next: Message[]): Message[] {
+  if (!next?.length) return prev;
+  if (!prev?.length) return next;
+  const byId = new Map(prev.map((m) => [m.id, m]));
+  const merged = next.map((m) => byId.get(m.id) ?? m);
+  if (merged.length === prev.length && merged.every((m, i) => m === prev[i])) return prev;
+  return merged;
+}
 
 function getSeenMap(): Record<string, string> {
   if (typeof window === "undefined") return {};
@@ -64,6 +73,7 @@ export function ChatWidget() {
   const [canSend, setCanSend] = useState(true);
   const [, setSeenVersion] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const prevMessageCountRef = useRef(0);
 
   const prevConnectionIdsRef = useRef<Set<string>>(new Set());
   const [acceptanceToast, setAcceptanceToast] = useState<{ name: string; id: string } | null>(null);
@@ -122,7 +132,8 @@ export function ChatWidget() {
     })
       .then((r) => r.json())
       .then((data) => {
-        setMessages(data.messages || []);
+        const next = data.messages || [];
+        setMessages((prev) => mergeMessages(prev, next));
         if (typeof data.canSend === "boolean") setCanSend(data.canSend);
       })
       .catch(() => {})
@@ -133,17 +144,24 @@ export function ChatWidget() {
     if (!selectedConn) {
       setMessages([]);
       setCanSend(true);
+      prevMessageCountRef.current = 0;
       return;
     }
+    setMessages([]);
     setMessagesLoading(true);
     setCanSend(true);
+    prevMessageCountRef.current = 0;
     fetchMessages();
     const id = setInterval(fetchMessages, MESSAGES_POLL_MS);
     return () => clearInterval(id);
   }, [selectedConn?.id, fetchMessages]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const prev = prevMessageCountRef.current;
+    prevMessageCountRef.current = messages.length;
+    if (messages.length > prev) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   useEffect(() => {
@@ -265,7 +283,7 @@ export function ChatWidget() {
                   {selectedConn.otherPhotoId ? (
                     <BlurredImage photoId={selectedConn.otherPhotoId} alt="" className="w-full h-full object-cover" />
                   ) : selectedConn.otherImageUrl ? (
-                    <img src={selectedConn.otherImageUrl} alt="" className="w-full h-full object-cover" />
+                    <img src={selectedConn.otherImageUrl} alt="" className="w-full h-full object-cover" draggable={false} onContextMenu={(e) => e.preventDefault()} />
                   ) : (
                     <span className="text-sm text-[var(--color-muted)]">—</span>
                   )}
@@ -394,7 +412,7 @@ export function ChatWidget() {
                               {c.otherPhotoId ? (
                                 <BlurredImage photoId={c.otherPhotoId} alt="" className="w-full h-full object-cover" />
                               ) : c.otherImageUrl ? (
-                                <img src={c.otherImageUrl} alt="" className="w-full h-full object-cover" />
+                                <img src={c.otherImageUrl} alt="" className="w-full h-full object-cover" draggable={false} onContextMenu={(e) => e.preventDefault()} />
                               ) : (
                                 <span className="text-sm text-[var(--color-muted)]">—</span>
                               )}
