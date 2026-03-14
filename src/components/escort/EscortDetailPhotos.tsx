@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { BlurredImage } from "@/components/BlurredImage";
-import { useAuth } from "@/contexts/AuthContext";
 
 type Photo = { id: string };
 
@@ -12,49 +11,74 @@ type Props = {
   photos: Photo[];
 };
 
-export function EscortDetailPhotos({ escortId, primaryPhotoId, photos }: Props) {
-  const { user, token } = useAuth();
-  const [showOnlyPrimary, setShowOnlyPrimary] = useState(false);
+export function EscortDetailPhotos({ primaryPhotoId, photos }: Props) {
+  const [lightboxPhotoId, setLightboxPhotoId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (user?.role !== "client" || !token) {
-      setShowOnlyPrimary(false);
-      return;
-    }
-    fetch("/api/bookings", { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
-      .then((data) => {
-        const connected = (data.bookings || []).some(
-          (b: { escort?: { id: string }; status: string }) =>
-            b.escort?.id === escortId && b.status === "accepted"
-        );
-        setShowOnlyPrimary(connected);
-      })
-      .catch(() => setShowOnlyPrimary(false));
-  }, [escortId, user?.role, token]);
+  const displayPhotoId = primaryPhotoId ?? photos[0]?.id ?? null;
 
   return (
     <div className="border border-[var(--color-border)] bg-[var(--color-charcoal)] overflow-hidden rounded-sm">
-      <div className="bg-[var(--color-slate)]">
+      <button
+        type="button"
+        onClick={() => displayPhotoId && setLightboxPhotoId(displayPhotoId)}
+        className="block w-full text-left bg-[var(--color-slate)] focus:outline-none focus:ring-2 focus:ring-[var(--color-champagne)]/50 rounded-t-sm"
+      >
         <BlurredImage
-          photoId={primaryPhotoId}
+          photoId={displayPhotoId}
           alt=""
           aspect="detail"
-          className="w-full"
+          className="w-full cursor-pointer"
         />
-      </div>
-      {!showOnlyPrimary && photos.length > 1 && (
+      </button>
+      {photos.length > 1 && (
         <div className="flex gap-2 p-3 overflow-x-auto border-t border-[var(--color-border)]">
           {photos.map((p) => (
-            <div key={p.id} className="flex-shrink-0 w-16 h-16 overflow-hidden border border-[var(--color-border)]">
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setLightboxPhotoId(p.id)}
+              className="flex-shrink-0 w-16 h-16 overflow-hidden border border-[var(--color-border)] hover:border-[var(--color-champagne)]/50 transition focus:outline-none focus:ring-2 focus:ring-[var(--color-champagne)]/50 rounded-sm"
+            >
               <BlurredImage
                 photoId={p.id}
                 alt=""
                 aspect="thumbnail"
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover pointer-events-none"
+              />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {lightboxPhotoId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--color-obsidian)]/95 p-4"
+          onClick={() => setLightboxPhotoId(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="View photo"
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxPhotoId(null)}
+            className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center text-2xl text-[var(--color-silver)] hover:text-[var(--color-ivory)] border border-[var(--color-border)] rounded-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-champagne)]/50"
+            aria-label="Close"
+          >
+            ×
+          </button>
+          <div
+            className="max-w-[95vw] max-h-[90vh] w-full flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="relative w-full max-w-4xl min-h-[70vh] aspect-[4/5] max-h-[90vh] bg-[var(--color-slate)] rounded-sm overflow-hidden">
+              <BlurredImage
+                photoId={lightboxPhotoId}
+                alt=""
+                aspect="detail"
+                className="w-full h-full object-contain"
               />
             </div>
-          ))}
+          </div>
         </div>
       )}
     </div>

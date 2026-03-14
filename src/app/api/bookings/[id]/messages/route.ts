@@ -64,7 +64,7 @@ export async function GET(
   const canSend = booking.status === "accepted";
 
   return NextResponse.json(
-    { messages, canSend },
+    { messages, canSend, currentUserId: payload.userId },
     {
       headers: {
         "Cache-Control": "no-store, no-cache, must-revalidate",

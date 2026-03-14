@@ -67,6 +67,7 @@ export function ChatWidget() {
   const [selectedConn, setSelectedConn] = useState<Connection | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
@@ -135,6 +136,7 @@ export function ChatWidget() {
         const next = data.messages || [];
         setMessages((prev) => mergeMessages(prev, next));
         if (typeof data.canSend === "boolean") setCanSend(data.canSend);
+        if (data.currentUserId) setCurrentUserId(data.currentUserId);
       })
       .catch(() => {})
       .finally(() => setMessagesLoading(false));
@@ -143,11 +145,13 @@ export function ChatWidget() {
   useEffect(() => {
     if (!selectedConn) {
       setMessages([]);
+      setCurrentUserId(null);
       setCanSend(true);
       prevMessageCountRef.current = 0;
       return;
     }
     setMessages([]);
+    setCurrentUserId(null);
     setMessagesLoading(true);
     setCanSend(true);
     prevMessageCountRef.current = 0;
@@ -300,14 +304,16 @@ export function ChatWidget() {
                     No messages yet. Say hello.
                   </p>
                 ) : (
-                  messages.map((m) => (
+                  messages.map((m) => {
+                    const isMe = m.sender.id === (currentUserId || user?.id);
+                    return (
                     <div
                       key={m.id}
-                      className={`flex ${m.sender.id === user?.id ? "justify-end" : "justify-start"}`}
+                      className={`flex ${isMe ? "justify-end" : "justify-start"}`}
                     >
                       <div
                         className={`max-w-[85%] px-3 py-2 rounded text-sm ${
-                          m.sender.id === user?.id
+                          isMe
                             ? "bg-[var(--color-champagne)]/20 border border-[var(--color-champagne)]/40 text-[var(--color-ivory)]"
                             : "bg-[var(--color-slate)] border border-[var(--color-border)] text-[var(--color-pearl)]"
                         }`}
@@ -318,7 +324,7 @@ export function ChatWidget() {
                         </p>
                       </div>
                     </div>
-                  ))
+                  ); })
                 )}
                 <div ref={messagesEndRef} />
               </div>
