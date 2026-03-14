@@ -54,6 +54,7 @@ export default async function EscortPage({
         <div className="grid lg:grid-cols-3 gap-12">
           <div className="lg:col-span-2 space-y-8">
             <EscortDetailPhotos
+              escortId={escort.id}
               primaryPhotoId={primaryPhoto?.id ?? null}
               photos={photos.map((p) => ({ id: p.id }))}
             />

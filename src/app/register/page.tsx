@@ -49,6 +49,14 @@ export default function RegisterPage() {
   return (
     <div className="pt-24 min-h-screen flex flex-col items-center justify-center px-6 py-16">
       <div className="w-full max-w-md">
+        <div className="border border-[var(--color-champagne)]/50 bg-[var(--color-champagne)]/5 rounded-sm p-5 mb-8">
+          <p className="text-sm font-medium text-[var(--color-champagne)] tracking-wide">
+            Sign up and get 10 credits for free
+          </p>
+          <p className="text-xs text-[var(--color-silver)] mt-1 font-light">
+            Use credits to connect with companions and send messages.
+          </p>
+        </div>
         <p className="text-xs tracking-[0.4em] uppercase text-[var(--color-champagne)] mb-2">
           Join Escorta
         </p>

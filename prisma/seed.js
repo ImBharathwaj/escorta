@@ -77,6 +77,15 @@ async function main() {
   } else {
     console.log("Admin user already exists.");
   }
+
+  // Give clients with zero credits some starting credits for testing
+  const clientCount = await prisma.user.updateMany({
+    where: { role: "client", credits: 0 },
+    data: { credits: 50 },
+  });
+  if (clientCount.count > 0) {
+    console.log(`Set 50 credits for ${clientCount.count} client(s) with no credits.`);
+  }
 }
 
 main()

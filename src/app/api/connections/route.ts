@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
+import { getSignedImageUrl } from "@/lib/minio";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 
@@ -30,7 +31,7 @@ export async function GET(req: NextRequest) {
     const bookings = await prisma.booking.findMany({
       where: { escortId: profile.id, status: "accepted" },
       include: {
-        client: { select: { id: true, email: true, displayName: true } },
+        client: { select: { id: true, email: true, displayName: true, avatarUrl: true } },
         messages: {
           orderBy: { createdAt: "desc" },
           take: 1,
@@ -39,11 +40,20 @@ export async function GET(req: NextRequest) {
       },
       orderBy: { createdAt: "desc" },
     });
-    const sorted = bookings
+    const withAvatars = await Promise.all(
+      bookings.map(async (b) => ({
+        ...b,
+        clientAvatarSignedUrl: b.client?.avatarUrl
+          ? await getSignedImageUrl(b.client.avatarUrl).catch(() => null)
+          : null,
+      }))
+    );
+    const sorted = withAvatars
       .map((b) => ({
         id: b.id,
         otherName: (b.client?.displayName || b.client?.email) || "Member",
         otherId: b.client?.id,
+        otherImageUrl: b.clientAvatarSignedUrl ?? null,
         lastMessage: b.messages[0]
           ? {
               id: b.messages[0].id,
@@ -65,18 +75,22 @@ export async function GET(req: NextRequest) {
       seen.add(key);
       return true;
     });
-    return NextResponse.json({ connections });
+    return NextResponse.json(
+      { connections },
+      { headers: { "Cache-Control": "private, no-store, must-revalidate" } }
+    );
   }
 
   if (payload.role === "client") {
     const bookings = await prisma.booking.findMany({
-      where: { clientId: payload.userId, status: "accepted" },
+      where: { clientId: payload.userId, status: { in: ["accepted", "cancelled"] } },
       include: {
-        escort: { select: { id: true, aliasName: true } },
+        escort: {
+          include: { photos: { orderBy: [{ isPrimary: "desc" }], take: 1 } },
+        },
         messages: {
           orderBy: { createdAt: "desc" },
           take: 1,
-          select: { id: true, message: true, createdAt: true, senderId: true },
         },
       },
       orderBy: { createdAt: "desc" },
@@ -86,6 +100,8 @@ export async function GET(req: NextRequest) {
         id: b.id,
         otherName: b.escort?.aliasName ?? "Companion",
         otherId: b.escort?.id,
+        otherPhotoId: b.escort?.photos?.[0]?.id ?? null,
+        canSend: b.status === "accepted",
         lastMessage: b.messages[0]
           ? {
               id: b.messages[0].id,
@@ -96,6 +112,7 @@ export async function GET(req: NextRequest) {
           : null,
       }))
       .sort((a, b) => {
+        if (a.canSend !== b.canSend) return a.canSend ? -1 : 1;
         const aTime = a.lastMessage?.createdAt ?? "";
         const bTime = b.lastMessage?.createdAt ?? "";
         return bTime > aTime ? 1 : -1;
@@ -107,7 +124,10 @@ export async function GET(req: NextRequest) {
       seen.add(key);
       return true;
     });
-    return NextResponse.json({ connections });
+    return NextResponse.json(
+      { connections },
+      { headers: { "Cache-Control": "private, no-store, must-revalidate" } }
+    );
   }
 
   return NextResponse.json({ connections: [] });

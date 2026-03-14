@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
+import { getSignedImageUrl } from "@/lib/minio";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 
@@ -37,7 +38,7 @@ export async function GET(
 
   const client = await prisma.user.findUnique({
     where: { id: clientId, role: "client" },
-    select: { id: true, email: true, displayName: true },
+    select: { id: true, email: true, displayName: true, avatarUrl: true },
   });
   if (!client) {
     return NextResponse.json({ error: "Member not found" }, { status: 404 });
@@ -52,10 +53,15 @@ export async function GET(
     select: { id: true, status: true },
   });
 
+  const avatarSignedUrl = client.avatarUrl
+    ? await getSignedImageUrl(client.avatarUrl).catch(() => null)
+    : null;
+
   return NextResponse.json({
     id: client.id,
     email: client.email,
     displayName: client.displayName,
+    avatarSignedUrl,
     connected: connection?.status === "accepted",
     connectionId: connection?.status === "accepted" ? connection.id : null,
     connectionStatus: connection?.status ?? null,

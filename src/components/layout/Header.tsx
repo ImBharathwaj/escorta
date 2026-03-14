@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { CompanionsLink } from "@/components/CompanionsLink";
 
 export function Header() {
-  const { user } = useAuth();
+  const { user, authReady } = useAuth();
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 border-b border-[var(--color-border)]/80 bg-[var(--color-obsidian)]/90 backdrop-blur-md">
@@ -17,6 +17,11 @@ export function Header() {
           Escorta
         </Link>
         <nav className="flex items-center gap-8">
+          {user?.role === "client" && (
+            <span className="text-sm text-[var(--color-silver)]">
+              Credits: <span className="text-[var(--color-champagne)] font-medium">{user?.credits ?? 0}</span>
+            </span>
+          )}
           {user?.role !== "escort" && <CompanionsLink />}
           {user?.role === "client" && !user.isPremiumMember && (
             <Link
@@ -26,7 +31,11 @@ export function Header() {
               Unlock
             </Link>
           )}
-          {user ? (
+          {!authReady ? (
+            <span className="text-sm tracking-widest uppercase text-[var(--color-silver)]/60">
+              …
+            </span>
+          ) : user ? (
             <Link
               href="/dashboard"
               className="text-sm tracking-widest uppercase text-[var(--color-silver)] hover:text-[var(--color-ivory)] transition"

@@ -33,8 +33,9 @@ export async function POST(req: NextRequest) {
         email: email || null,
         phone: phone || null,
         passwordHash,
+        credits: 10,
       },
-      select: { id: true, role: true, email: true, phone: true, createdAt: true },
+      select: { id: true, role: true, email: true, phone: true, credits: true, createdAt: true },
     });
 
     const token = jwt.sign(
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
     );
 
     return NextResponse.json({
-      user: { id: user.id, role: user.role, email: user.email, phone: user.phone },
+      user: { id: user.id, role: user.role, email: user.email, phone: user.phone, credits: user.credits ?? 10 },
       token,
     });
   } catch (e: unknown) {

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
+import { getSignedImageUrl } from "@/lib/minio";
+import { CONNECT_CREDITS } from "@/lib/credits";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 
@@ -29,19 +31,49 @@ export async function GET(req: NextRequest) {
     }
     const bookings = await prisma.booking.findMany({
       where: { escortId: profile.id },
-      include: { client: { select: { id: true, email: true, displayName: true } } },
+      include: { client: { select: { id: true, email: true, displayName: true, avatarUrl: true } } },
       orderBy: { createdAt: "desc" },
     });
-    return NextResponse.json({ bookings });
+    const withAvatars = await Promise.all(
+      bookings.map(async (b) => ({
+        ...b,
+        client: b.client
+          ? {
+              ...b.client,
+              avatarSignedUrl: b.client.avatarUrl
+                ? await getSignedImageUrl(b.client.avatarUrl).catch(() => null)
+                : null,
+            }
+          : undefined,
+      }))
+    );
+    return NextResponse.json({ bookings: withAvatars });
   }
 
   if (payload.role === "client") {
     const bookings = await prisma.booking.findMany({
       where: { clientId: payload.userId },
-      include: { escort: { select: { id: true, aliasName: true } } },
+      include: {
+        escort: {
+          include: { photos: { orderBy: [{ isPrimary: "desc" }], take: 1 } },
+        },
+      },
       orderBy: { createdAt: "desc" },
     });
-    return NextResponse.json({ bookings });
+    const shaped = bookings.map((b) => ({
+      ...b,
+      escort: b.escort
+        ? {
+            id: b.escort.id,
+            aliasName: b.escort.aliasName,
+            primaryPhotoId: b.escort.photos?.[0]?.id ?? null,
+          }
+        : undefined,
+    }));
+    return NextResponse.json(
+      { bookings: shaped },
+      { headers: { "Cache-Control": "private, no-store, must-revalidate" } }
+    );
   }
 
   return NextResponse.json({ bookings: [] });
@@ -85,25 +117,77 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+  // Cancelled bookings are ignored above; client can send a new request after being disconnected
 
-  const booking = await prisma.booking.create({
-    data: {
+  const client = await prisma.user.findUnique({
+    where: { id: payload.userId },
+    select: { credits: true },
+  });
+  const credits = client?.credits ?? 0;
+  if (credits < CONNECT_CREDITS) {
+    return NextResponse.json(
+      { error: `Insufficient credits. You need ${CONNECT_CREDITS} credits to connect. You have ${credits}.` },
+      { status: 402 }
+    );
+  }
+
+  const cancelledBooking = await prisma.booking.findFirst({
+    where: {
       escortId: escort_id,
       clientId: payload.userId,
-      message: message || null,
-      status: "pending",
+      status: "cancelled",
     },
+    orderBy: { createdAt: "desc" },
   });
 
-  if (message && message.trim()) {
-    await prisma.message.create({
+  const booking = await prisma.$transaction(async (tx) => {
+    if (cancelledBooking) {
+      const updated = await tx.booking.update({
+        where: { id: cancelledBooking.id },
+        data: {
+          status: "pending",
+          message: message || null,
+        },
+      });
+      if (message && message.trim()) {
+        await tx.message.create({
+          data: {
+            bookingId: cancelledBooking.id,
+            senderId: payload.userId,
+            message: message.trim().slice(0, 2000),
+          },
+        });
+      }
+      await tx.user.update({
+        where: { id: payload.userId },
+        data: { credits: { decrement: CONNECT_CREDITS } },
+      });
+      return updated;
+    }
+
+    const b = await tx.booking.create({
       data: {
-        bookingId: booking.id,
-        senderId: payload.userId,
-        message: message.trim().slice(0, 2000),
+        escortId: escort_id,
+        clientId: payload.userId,
+        message: message || null,
+        status: "pending",
       },
     });
-  }
+    if (message && message.trim()) {
+      await tx.message.create({
+        data: {
+          bookingId: b.id,
+          senderId: payload.userId,
+          message: message.trim().slice(0, 2000),
+        },
+      });
+    }
+    await tx.user.update({
+      where: { id: payload.userId },
+      data: { credits: { decrement: CONNECT_CREDITS } },
+    });
+    return b;
+  });
 
   return NextResponse.json(booking);
 }

@@ -24,6 +24,17 @@ export async function GET(
   const userId = getUserId(req);
   let canViewFull = false;
 
+  const { id } = await params;
+
+  const photo = await prisma.escortPhoto.findUnique({
+    where: { id, isApproved: true },
+    select: { imageUrl: true, escortId: true },
+  });
+  if (!photo) {
+    return NextResponse.json({ error: "Photo not found" }, { status: 404 });
+  }
+
+  let isClientConnectionView = false;
   if (userId) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -33,16 +44,22 @@ export async function GET(
       !!user &&
       (user.role === "escort" ||
         (user.role === "client" && user.isPremiumMember === true));
-  }
 
-  const { id } = await params;
-
-  const photo = await prisma.escortPhoto.findUnique({
-    where: { id, isApproved: true },
-  });
-  if (!photo) {
-    return NextResponse.json({ error: "Photo not found" }, { status: 404 });
+    if (!canViewFull && user?.role === "client") {
+      const acceptedWithEscort = await prisma.booking.findFirst({
+        where: {
+          clientId: userId,
+          escortId: photo.escortId,
+          status: "accepted",
+        },
+      });
+      if (acceptedWithEscort) {
+        canViewFull = true;
+        isClientConnectionView = true;
+      }
+    }
   }
+  // Only accepted connections get full view; once escort disconnects (status cancelled), client gets blurred
 
   try {
     const signedUrl = await getSignedImageUrl(photo.imageUrl);
@@ -58,7 +75,10 @@ export async function GET(
       return new NextResponse(buffer, {
         headers: {
           "Content-Type": contentType,
-          "Cache-Control": "private, max-age=3600",
+          "Cache-Control": isClientConnectionView
+            ? "private, no-store, must-revalidate"
+            : "private, max-age=3600",
+          "X-Image-Full": "true",
         },
       });
     }
