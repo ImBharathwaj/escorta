@@ -38,6 +38,86 @@ model User {
   emailVerificationTokens EmailVerificationToken[]
   creditTransactions    CreditTransaction[] @relation("CreditTransactionsAsUser")
   creditTransactionsRelated CreditTransaction[] @relation("CreditTransactionsRelatedUser")
+  liveViewers          LiveSessionViewer[]
+  liveSessionMessages  LiveSessionMessage[]
+  videoCallsAsClient   VideoCallSession[]
+  videoCallRequestsAsClient VideoCallRequest[]
+  notifications       Notification[]
+}
+
+model LiveSession {
+  id        String   @id @default(uuid())
+  escortId  String   @map("escort_id")
+  escort    EscortProfile @relation(fields: [escortId], references: [id], onDelete: Cascade)
+  roomName  String   @unique @map("room_name") // LiveKit room name
+  startedAt DateTime @default(now()) @map("started_at")
+  endedAt   DateTime? @map("ended_at")
+  status    String   @default("live") // live | ended
+
+  viewers  LiveSessionViewer[]
+  messages LiveSessionMessage[]
+
+  @@index([escortId])
+  @@index([status])
+}
+
+model LiveSessionViewer {
+  id             String       @id @default(uuid())
+  liveSessionId  String       @map("live_session_id")
+  liveSession    LiveSession  @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+  clientId       String       @map("client_id")
+  client         User         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  joinedAt       DateTime     @default(now()) @map("joined_at")
+  leftAt         DateTime?    @map("left_at")
+  watchExpiresAt DateTime?    @map("watch_expires_at") // client can watch until this time; extend adds more
+
+  @@unique([liveSessionId, clientId])
+  @@index([liveSessionId])
+  @@index([clientId])
+}
+
+model LiveSessionMessage {
+  id           String       @id @default(uuid())
+  liveSessionId String     @map("live_session_id")
+  liveSession   LiveSession @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+  senderId      String      @map("sender_id")
+  sender        User        @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  message       String      @db.Text
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@index([liveSessionId])
+}
+
+model VideoCallRequest {
+  id         String   @id @default(uuid())
+  clientId   String   @map("client_id")
+  client     User     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  escortId   String   @map("escort_id")
+  escort     EscortProfile @relation(fields: [escortId], references: [id], onDelete: Cascade)
+  status     String   @default("pending") // pending | accepted | declined | expired | cancelled
+  createdAt  DateTime @default(now()) @map("created_at")
+  expiresAt  DateTime @map("expires_at") // client request expires if not accepted/declined
+  respondedAt DateTime? @map("responded_at")
+
+  @@index([clientId])
+  @@index([escortId])
+  @@index([escortId, status])
+}
+
+model VideoCallSession {
+  id        String   @id @default(uuid())
+  clientId  String   @map("client_id")
+  client    User     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  escortId  String   @map("escort_id")
+  escort    EscortProfile @relation(fields: [escortId], references: [id], onDelete: Cascade)
+  roomName  String   @unique @map("room_name")
+  startedAt DateTime @default(now()) @map("started_at")
+  endedAt   DateTime? @map("ended_at")
+  expiresAt DateTime @map("expires_at") // when current block runs out
+  status    String   @default("active") // active | ended
+
+  @@index([clientId])
+  @@index([escortId])
 }
 
 model CreditTransaction {
@@ -53,6 +133,23 @@ model CreditTransaction {
   createdAt     DateTime @default(now()) @map("created_at")
 
   @@index([userId])
+  @@index([userId, createdAt])
+}
+
+model Notification {
+  id             String    @id @default(uuid())
+  userId         String    @map("user_id")
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type           String    // live_started | chat_message | video_call_request | video_call_accepted
+  title          String?   @db.Text
+  referenceType  String?   @map("reference_type") // live_session | booking
+  referenceId    String?   @map("reference_id")
+  relatedUserId  String?   @map("related_user_id")
+  readAt         DateTime? @map("read_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([userId, readAt])
   @@index([userId, createdAt])
 }
 
@@ -92,6 +189,36 @@ model EscortProfile {
   availability   EscortAvailability[]
   bookings       Booking[]
   sexterSessions SexterSession[]
+  liveSessions   LiveSession[]
+  videoCalls     VideoCallSession[]
+  videoCallRequests VideoCallRequest[]
+  videoVods      EscortVod[]
+  premiumRequests EscortPremiumRequest[]
+}
+
+model EscortPremiumRequest {
+  id               String    @id @default(uuid())
+  escortId         String    @map("escort_id")
+  escort           EscortProfile @relation(fields: [escortId], references: [id], onDelete: Cascade)
+  status           String    @default("pending") // pending | approved | rejected
+  message          String?   @db.Text
+  adminNotes       String?   @map("admin_notes") @db.Text
+  reviewedAt      DateTime? @map("reviewed_at")
+  reviewedByUserId String?   @map("reviewed_by_user_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  @@index([escortId])
+  @@index([status])
+}
+
+model EscortVod {
+  id        String   @id @default(uuid())
+  escortId  String   @map("escort_id")
+  escort    EscortProfile @relation(fields: [escortId], references: [id], onDelete: Cascade)
+  storageKey String  @map("storage_key") // MinIO key, e.g. vods/{escortId}/{id}.mp4
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([escortId])
 }
 
 model Service {

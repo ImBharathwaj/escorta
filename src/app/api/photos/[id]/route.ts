@@ -6,12 +6,12 @@ import { getSignedImageUrl } from "@/lib/minio";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 
-function getUserId(req: NextRequest): string | null {
+function getAuth(req: NextRequest): { userId: string; role?: string } | null {
   const auth = req.headers.get("authorization");
   if (!auth?.startsWith("Bearer ")) return null;
   try {
-    const payload = jwt.verify(auth.slice(7), JWT_SECRET) as { userId: string };
-    return payload.userId;
+    const payload = jwt.verify(auth.slice(7), JWT_SECRET) as { userId: string; role?: string };
+    return { userId: payload.userId, role: payload.role };
   } catch {
     return null;
   }
@@ -21,7 +21,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const userId = getUserId(req);
+  const auth = getAuth(req);
   let canViewFull = false;
 
   const { id } = await params;
@@ -34,10 +34,14 @@ export async function GET(
     return NextResponse.json({ error: "Photo not found" }, { status: 404 });
   }
 
+  if (auth?.role === "admin") {
+    canViewFull = true;
+  }
+
   let isClientConnectionView = false;
-  if (userId) {
+  if (auth?.userId && !canViewFull) {
     const user = await prisma.user.findUnique({
-      where: { id: userId },
+      where: { id: auth.userId },
       select: { role: true, isPremiumMember: true },
     });
     canViewFull =
@@ -48,7 +52,7 @@ export async function GET(
     if (!canViewFull && user?.role === "client") {
       const acceptedWithEscort = await prisma.booking.findFirst({
         where: {
-          clientId: userId,
+          clientId: auth.userId,
           escortId: photo.escortId,
           status: "accepted",
         },

@@ -23,6 +23,11 @@ const TYPE_LABELS: Record<string, string> = {
   sexter_extend: "Sexter session (extended)",
   sexter_earned: "Sexter session",
   signup_bonus: "Signup bonus",
+  live_watch: "Live stream",
+  live_earned: "Live stream",
+  video_call: "Video call",
+  video_call_extend: "Video call (extended)",
+  video_call_earned: "Video call",
 };
 
 /** GET: Credit usage (client) or earnings (companion) history. */

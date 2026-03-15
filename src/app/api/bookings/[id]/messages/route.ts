@@ -115,7 +115,23 @@ export async function POST(
       senderId: payload.userId,
       message: message.trim().slice(0, 2000),
     },
-    include: { sender: { select: { id: true, role: true } } },
+    include: { sender: { select: { id: true, role: true, displayName: true } } },
+  });
+
+  const recipientId = payload.role === "client" ? booking.escort.userId : booking.clientId;
+  const senderLabel =
+    payload.role === "client"
+      ? (booking.client?.displayName || "A client")
+      : (booking.escort?.aliasName || "Companion");
+  await prisma.notification.create({
+    data: {
+      userId: recipientId,
+      type: "chat_message",
+      title: `New message from ${senderLabel}`,
+      referenceType: "booking",
+      referenceId: id,
+      relatedUserId: payload.userId,
+    },
   });
 
   if (payload.role === "client") {

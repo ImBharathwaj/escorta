@@ -64,6 +64,12 @@ export default function AdminLayout({
             >
               Escorts
             </Link>
+            <Link
+              href="/admin/premium-requests"
+              className="text-sm text-[var(--color-silver)] hover:text-[var(--color-ivory)]"
+            >
+              Premium requests
+            </Link>
             <span className="text-sm text-[var(--color-muted)]">{user?.email}</span>
             <Link
               href="/"

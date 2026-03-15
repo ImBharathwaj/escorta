@@ -46,7 +46,7 @@ export default async function CompanionsPage({
       photos: {
         where: { isApproved: true },
         orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
-        take: 1,
+        take: 10,
       },
     },
     orderBy: { createdAt: "desc" },
@@ -102,6 +102,7 @@ export default async function CompanionsPage({
                 isVerified={e.isVerified}
                 isGenderVerified={e.isGenderVerified}
                 photoId={e.photos[0]?.id ?? null}
+                photoIds={e.photos.map((p) => p.id)}
               />
             ))
           )}

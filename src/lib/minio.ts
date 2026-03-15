@@ -185,3 +185,40 @@ export async function getSignedImageUrl(storedUrl: string): Promise<string> {
     return storedUrl;
   }
 }
+
+/** Max VOD file size (50MB). Premium companions only. */
+export const VOD_MAX_BYTES = 50 * 1024 * 1024;
+
+/** Upload a video file for "VOD as live" (premium companions). Returns stored URL. */
+export async function uploadVod(escortId: string, vodId: string, buffer: Buffer, contentType: string): Promise<string> {
+  const client = getClient();
+  await ensureBucket();
+  const ext = contentType.includes("webm") ? "webm" : "mp4";
+  const key = `vods/${escortId}/${vodId}.${ext}`;
+  await client.send(
+    new PutObjectCommand({
+      Bucket: BUCKET,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+    })
+  );
+  return `${ENDPOINT}/${BUCKET}/${key}`;
+}
+
+/** Get presigned URL for VOD playback (e.g. when going live with uploaded video). Expires in 2 hours. */
+export async function getSignedVodUrl(storageKey: string): Promise<string> {
+  try {
+    const client = getClient();
+    const command = new GetObjectCommand({ Bucket: BUCKET, Key: storageKey });
+    return await getSignedUrl(client, command, { expiresIn: 7200 });
+  } catch {
+    return "";
+  }
+}
+
+/** Delete a VOD from MinIO by storage key. */
+export async function deleteVodByKey(storageKey: string): Promise<void> {
+  const client = getClient();
+  await client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: storageKey }));
+}

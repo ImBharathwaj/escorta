@@ -37,6 +37,12 @@ export default function ChatPage() {
   const [messageError, setMessageError] = useState("");
   const [canSend, setCanSend] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [escortId, setEscortId] = useState<string | null>(null);
+  const [clientIdForEscort, setClientIdForEscort] = useState<string | null>(null);
+  const [activeVideoCall, setActiveVideoCall] = useState<{ id: string; other: { id: string; name: string } } | null>(null);
+  const [videoCallLoading, setVideoCallLoading] = useState(false);
+  const [pendingVideoRequestId, setPendingVideoRequestId] = useState<string | null>(null);
+  const [pendingVideoRequests, setPendingVideoRequests] = useState<{ id: string; clientId: string; clientName: string }[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevMessageCountRef = useRef(0);
 
@@ -69,7 +75,10 @@ export default function ChatPage() {
           setOtherName(conn.escort?.aliasName ?? "Companion");
           setOtherPhotoId(conn.escort?.primaryPhotoId ?? null);
           setOtherImageUrl(null);
+          setEscortId(conn.escort?.id ?? conn.escortId ?? null);
         } else {
+          setEscortId(null);
+          setClientIdForEscort(conn.client?.id ?? null);
           setOtherName(
             (conn.client?.displayName || conn.client?.email) ?? "Member"
           );
@@ -79,6 +88,42 @@ export default function ChatPage() {
       })
       .catch(() => router.push("/dashboard"));
   }, [token, id, user?.role, router]);
+
+  useEffect(() => {
+    if (!token) return;
+    const fetchActive = () =>
+      fetch("/api/video-call/active", { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => r.json())
+        .then((data) => setActiveVideoCall(data.session ?? null))
+        .catch(() => setActiveVideoCall(null));
+    fetchActive();
+    const interval = setInterval(fetchActive, 4000);
+    return () => clearInterval(interval);
+  }, [token]);
+
+  useEffect(() => {
+    if (!token || user?.role !== "escort") return;
+    const fetchRequests = () =>
+      fetch("/api/video-call/requests", { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => r.json())
+        .then((data) => setPendingVideoRequests(data.requests ?? []))
+        .catch(() => setPendingVideoRequests([]));
+    fetchRequests();
+    const interval = setInterval(fetchRequests, 4000);
+    return () => clearInterval(interval);
+  }, [token, user?.role]);
+
+  useEffect(() => {
+    if (!token || user?.role !== "client" || !escortId) return;
+    fetch(`/api/video-call/requests?escortId=${encodeURIComponent(escortId)}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((data) => {
+        const requests = data.requests ?? [];
+        const pending = requests.find((r: { status: string }) => r.status === "pending");
+        if (pending) setPendingVideoRequestId(pending.id);
+      })
+      .catch(() => {});
+  }, [token, user?.role, escortId]);
 
   useEffect(() => {
     if (!token || !id) return;
@@ -174,7 +219,7 @@ export default function ChatPage() {
                 <span className="text-lg text-[var(--color-muted)]">—</span>
               )}
             </div>
-            <div>
+            <div className="flex-1 min-w-0">
               <h1 className="text-lg font-light text-[var(--color-ivory)]">
                 Chat with {otherName || "..."}
               </h1>
@@ -182,6 +227,130 @@ export default function ChatPage() {
                 For connection and arranging meetups
               </p>
             </div>
+            {user?.role === "client" && canSend && escortId && (
+              (() => {
+                if (activeVideoCall && activeVideoCall.other.id === escortId) {
+                  return (
+                    <Link
+                      href={`/video-call/${activeVideoCall.id}`}
+                      className="flex-shrink-0 px-3 py-2 text-sm border border-green-500/70 text-green-300 hover:bg-green-500/20 transition"
+                    >
+                      Join video call
+                    </Link>
+                  );
+                }
+                if (pendingVideoRequestId) {
+                  return (
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-xs text-[var(--color-silver)]">Waiting for acceptance…</span>
+                      <button
+                        type="button"
+                        disabled={videoCallLoading}
+                        onClick={async () => {
+                          if (!token || !pendingVideoRequestId) return;
+                          setVideoCallLoading(true);
+                          try {
+                            await fetch(`/api/video-call/request/${pendingVideoRequestId}/cancel`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+                            setPendingVideoRequestId(null);
+                          } finally {
+                            setVideoCallLoading(false);
+                          }
+                        }}
+                        className="px-2 py-1 text-xs border border-[var(--color-border)] text-[var(--color-silver)] hover:bg-[var(--color-charcoal)] disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  );
+                }
+                return (
+                  <button
+                    type="button"
+                    disabled={videoCallLoading}
+                    onClick={async () => {
+                      if (!token || !escortId) return;
+                      setVideoCallLoading(true);
+                      try {
+                        const res = await fetch("/api/video-call/request", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({ escortId }),
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (res.ok && data.requestId) {
+                          setPendingVideoRequestId(data.requestId);
+                        }
+                      } finally {
+                        setVideoCallLoading(false);
+                      }
+                    }}
+                    className="flex-shrink-0 px-3 py-2 text-sm border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)]/10 disabled:opacity-50 transition"
+                  >
+                    {videoCallLoading ? "Sending…" : "Request video call"}
+                  </button>
+                );
+              })()
+            )}
+            {user?.role === "escort" && (() => {
+              const fromThisClient = clientIdForEscort ? pendingVideoRequests.filter((r: { clientId: string }) => r.clientId === clientIdForEscort) : [];
+              const hasActiveWithThisClient = activeVideoCall && activeVideoCall.other.id === clientIdForEscort;
+              if (hasActiveWithThisClient) {
+                return (
+                  <Link
+                    href={`/video-call/${activeVideoCall.id}`}
+                    className="flex-shrink-0 px-3 py-2 text-sm border border-green-500/70 text-green-300 hover:bg-green-500/20 transition"
+                  >
+                    Join video call
+                  </Link>
+                );
+              }
+              if (fromThisClient.length > 0) {
+                const req = fromThisClient[0];
+                return (
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-xs text-[var(--color-silver)]">{req.clientName} wants to video call</span>
+                    <button
+                      type="button"
+                      disabled={videoCallLoading}
+                      onClick={async () => {
+                        if (!token || !req.id) return;
+                        setVideoCallLoading(true);
+                        try {
+                          const res = await fetch(`/api/video-call/request/${req.id}/decline`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+                          if (res.ok) setPendingVideoRequests((prev) => prev.filter((p: { id: string }) => p.id !== req.id));
+                        } finally {
+                          setVideoCallLoading(false);
+                        }
+                      }}
+                      className="px-2 py-1 text-xs border border-red-500/50 text-red-300 hover:bg-red-500/10 disabled:opacity-50"
+                    >
+                      Decline
+                    </button>
+                    <button
+                      type="button"
+                      disabled={videoCallLoading}
+                      onClick={async () => {
+                        if (!token || !req.id) return;
+                        setVideoCallLoading(true);
+                        try {
+                          const res = await fetch(`/api/video-call/request/${req.id}/accept`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+                          const data = await res.json().catch(() => ({}));
+                          if (res.ok && data.session?.id) {
+                            router.push(`/video-call/${data.session.id}`);
+                          }
+                        } finally {
+                          setVideoCallLoading(false);
+                        }
+                      }}
+                      className="px-2 py-1 text-xs border border-green-500/70 text-green-300 hover:bg-green-500/20 disabled:opacity-50"
+                    >
+                      Accept
+                    </button>
+                  </div>
+                );
+              }
+              return null;
+            })()}
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4">

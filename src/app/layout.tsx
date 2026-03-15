@@ -36,9 +36,11 @@ export default function RootLayout({
         <AgeGate />
         <AuthProvider>
           <ActivityPing />
-          <EmailVerificationBanner />
           <Header />
-          <main className="min-h-screen">{children}</main>
+          <div className="pt-16">
+            <EmailVerificationBanner />
+            <main className="min-h-screen">{children}</main>
+          </div>
           <BookingNotification />
           <ChatWidget />
           <SignupPromoPopup />

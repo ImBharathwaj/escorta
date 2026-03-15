@@ -3,6 +3,19 @@
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { CompanionsLink } from "@/components/CompanionsLink";
+import { NotificationBell } from "@/components/NotificationBell";
+import {
+  IconLive,
+  IconGoLive,
+  IconSexter,
+  IconUnlock,
+  IconAccount,
+  IconSignIn,
+  IconCredits,
+} from "@/components/icons/NavIcons";
+
+const navLinkClass =
+  "p-2 text-[var(--color-silver)] hover:text-[var(--color-ivory)] transition rounded-sm";
 
 export function Header() {
   const { user, token, authReady } = useAuth();
@@ -17,46 +30,66 @@ export function Header() {
         >
           Escorta
         </Link>
-        <nav className="flex items-center gap-8">
+        <nav className="flex items-center gap-2">
           {user?.role === "client" && (
-            <span className="text-sm text-[var(--color-silver)]">
-              Credits: <span className="text-[var(--color-champagne)] font-medium">{user?.credits ?? 0}</span>
+            <span
+              className="flex items-center gap-1.5 px-2 text-[var(--color-silver)]"
+              title="Credits"
+            >
+              <IconCredits />
+              <span className="text-sm">
+                <span className="text-[var(--color-champagne)] font-medium">{user?.credits ?? 0}</span>
+              </span>
             </span>
           )}
           {user?.role !== "escort" && <CompanionsLink />}
+          {user?.role === "client" && (
+            <Link href="/live" title="Live" className={navLinkClass} aria-label="Live">
+              <IconLive />
+            </Link>
+          )}
+          {user?.role === "escort" && (
+            <Link href="/live/go" title="Go live" className={navLinkClass} aria-label="Go live">
+              <IconGoLive />
+            </Link>
+          )}
           {(user?.role === "client" || user?.role === "escort") && (
-            <Link
-              href="/sexter"
-              className="text-sm tracking-widest uppercase text-[var(--color-silver)] hover:text-[var(--color-ivory)] transition"
-            >
-              Sexter
+            <Link href="/sexter" title="Sexter" className={navLinkClass} aria-label="Sexter">
+              <IconSexter />
             </Link>
           )}
           {user?.role === "client" && !user.isPremiumMember && (
             <Link
               href="/membership"
-              className="text-sm tracking-widest uppercase text-[var(--color-champagne)] hover:text-[var(--color-champagne-light)] transition"
+              title="Unlock"
+              className="p-2 text-[var(--color-champagne)] hover:text-[var(--color-champagne-light)] transition rounded-sm"
+              aria-label="Unlock"
             >
-              Unlock
+              <IconUnlock />
             </Link>
           )}
+          {(user?.role === "client" || user?.role === "escort") && <NotificationBell />}
           {authPending ? (
-            <span className="text-sm tracking-widest uppercase text-[var(--color-silver)]/60">
+            <span className="p-2 text-[var(--color-silver)]/60" aria-hidden>
               …
             </span>
           ) : user ? (
             <Link
               href="/dashboard"
-              className="text-sm tracking-widest uppercase text-[var(--color-silver)] hover:text-[var(--color-ivory)] transition"
+              title="Account"
+              className={navLinkClass}
+              aria-label="Account"
             >
-              Account
+              <IconAccount />
             </Link>
           ) : (
             <Link
               href="/login"
-              className="text-sm tracking-widest uppercase text-[var(--color-champagne)] hover:text-[var(--color-champagne-light)] transition"
+              title="Sign in"
+              className="p-2 text-[var(--color-champagne)] hover:text-[var(--color-champagne-light)] transition rounded-sm"
+              aria-label="Sign in"
             >
-              Sign in
+              <IconSignIn />
             </Link>
           )}
         </nav>
