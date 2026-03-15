@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
 import { SEXTER_SESSION_CREDITS, SEXTER_SESSION_MINUTES } from "@/lib/credits";
+import { recordClientSpendAndCompanionEarn } from "@/lib/creditLedger";
 import { uploadSexterMedia, getSignedImageUrl } from "@/lib/minio";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
@@ -162,6 +163,13 @@ export async function POST(
         }),
       ]);
       session = await prisma.sexterSession.findUniqueOrThrow({ where: { id: lastSession.id } });
+      await recordClientSpendAndCompanionEarn({
+        clientUserId: clientId,
+        escortId,
+        amount: SEXTER_SESSION_CREDITS,
+        type: "sexter_session",
+        sexterSessionId: lastSession.id,
+      });
     } else {
       session = await prisma.sexterSession.create({
         data: { clientId, escortId, expiresAt },
@@ -169,6 +177,13 @@ export async function POST(
       await prisma.user.update({
         where: { id: clientId },
         data: { credits: { decrement: SEXTER_SESSION_CREDITS } },
+      });
+      await recordClientSpendAndCompanionEarn({
+        clientUserId: clientId,
+        escortId,
+        amount: SEXTER_SESSION_CREDITS,
+        type: "sexter_session",
+        sexterSessionId: session.id,
       });
     }
   }

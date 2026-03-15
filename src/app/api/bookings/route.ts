@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
 import { getSignedImageUrl } from "@/lib/minio";
 import { CONNECT_CREDITS } from "@/lib/credits";
+import { recordCreditTransaction } from "@/lib/creditLedger";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 
@@ -188,6 +189,29 @@ export async function POST(req: NextRequest) {
     });
     return b;
   });
+
+  const escortProfile = await prisma.escortProfile.findUnique({
+    where: { id: booking.escortId },
+    select: { userId: true },
+  });
+  await recordCreditTransaction({
+    userId: payload.userId,
+    amount: -CONNECT_CREDITS,
+    type: "connect",
+    referenceType: "booking",
+    referenceId: booking.id,
+    relatedUserId: escortProfile?.userId ?? undefined,
+  });
+  if (escortProfile?.userId) {
+    await recordCreditTransaction({
+      userId: escortProfile.userId,
+      amount: CONNECT_CREDITS,
+      type: "connect_earned",
+      referenceType: "booking",
+      referenceId: booking.id,
+      relatedUserId: payload.userId,
+    });
+  }
 
   return NextResponse.json(booking);
 }

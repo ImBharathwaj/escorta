@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
 import { MESSAGE_CREDITS } from "@/lib/credits";
+import { recordCreditTransaction } from "@/lib/creditLedger";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 
@@ -121,6 +122,14 @@ export async function POST(
     await prisma.user.update({
       where: { id: payload.userId },
       data: { credits: { decrement: MESSAGE_CREDITS } },
+    });
+    await recordCreditTransaction({
+      userId: payload.userId,
+      amount: -MESSAGE_CREDITS,
+      type: "message",
+      referenceType: "booking",
+      referenceId: id,
+      relatedUserId: booking.escort.userId,
     });
   }
 

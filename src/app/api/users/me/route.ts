@@ -31,7 +31,12 @@ export async function GET(req: NextRequest) {
       avatarUrl: true,
       isPremiumMember: true,
       credits: true,
+      orientation: true,
+      preferencesNotes: true,
       createdAt: true,
+      clientPreferredServices: {
+        select: { adultService: { select: { name: true } } },
+      },
     },
   });
   if (!user) {
@@ -40,7 +45,15 @@ export async function GET(req: NextRequest) {
   const avatarSignedUrl = user.avatarUrl
     ? await getSignedImageUrl(user.avatarUrl).catch(() => null)
     : null;
-  return NextResponse.json({ ...user, avatarSignedUrl });
+  const { clientPreferredServices, ...rest } = user;
+  const preferredServices = (clientPreferredServices ?? []).map(
+    (c) => c.adultService.name
+  );
+  return NextResponse.json({
+    ...rest,
+    avatarSignedUrl,
+    preferredServices,
+  });
 }
 
 export async function PATCH(req: NextRequest) {
@@ -48,8 +61,48 @@ export async function PATCH(req: NextRequest) {
   if (!payload) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const body = await req.json();
-  const { display_name, email, phone } = body;
+  const body = await req.json().catch(() => ({}));
+  const {
+    display_name,
+    email,
+    phone,
+    orientation,
+    preferences_notes,
+    preferred_services,
+  } = body;
+
+  if (preferred_services !== undefined) {
+    const names = Array.isArray(preferred_services)
+      ? preferred_services.map((s: unknown) => String(s).trim()).filter(Boolean)
+      : [];
+    const serviceIds: string[] = [];
+    for (const name of names) {
+      const existing = await prisma.adultService.findUnique({
+        where: { name },
+        select: { id: true },
+      });
+      if (existing) {
+        serviceIds.push(existing.id);
+      } else {
+        const created = await prisma.adultService.create({
+          data: { name },
+          select: { id: true },
+        });
+        serviceIds.push(created.id);
+      }
+    }
+    await prisma.clientAdultService.deleteMany({
+      where: { userId: payload.userId },
+    });
+    if (serviceIds.length > 0) {
+      await prisma.clientAdultService.createMany({
+        data: serviceIds.map((adultServiceId) => ({
+          userId: payload.userId,
+          adultServiceId,
+        })),
+      });
+    }
+  }
 
   await prisma.user.update({
     where: { id: payload.userId },
@@ -57,6 +110,10 @@ export async function PATCH(req: NextRequest) {
       ...(display_name !== undefined && { displayName: display_name?.trim() || null }),
       ...(email !== undefined && { email: email?.trim() || null }),
       ...(phone !== undefined && { phone: phone?.trim() || null }),
+      ...(orientation !== undefined && { orientation: orientation?.trim() || null }),
+      ...(preferences_notes !== undefined && {
+        preferencesNotes: preferences_notes?.trim() || null,
+      }),
     },
   });
 
@@ -71,8 +128,23 @@ export async function PATCH(req: NextRequest) {
       avatarUrl: true,
       isPremiumMember: true,
       credits: true,
+      orientation: true,
+      preferencesNotes: true,
       createdAt: true,
+      clientPreferredServices: {
+        select: { adultService: { select: { name: true } } },
+      },
     },
   });
-  return NextResponse.json(updated);
+  if (!updated) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+  const { clientPreferredServices, ...rest } = updated;
+  const preferredServices = (clientPreferredServices ?? []).map(
+    (c) => c.adultService.name
+  );
+  const avatarSignedUrl = rest.avatarUrl
+    ? await getSignedImageUrl(rest.avatarUrl).catch(() => null)
+    : null;
+  return NextResponse.json({ ...rest, preferredServices, avatarSignedUrl });
 }

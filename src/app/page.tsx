@@ -1,8 +1,11 @@
-import Link from "next/link";
+"use client";
 
-export default function HomePage() {
+import Link from "next/link";
+import { useAuth } from "@/contexts/AuthContext";
+
+function GuestHome() {
   return (
-    <div className="pt-16">
+    <>
       {/* Hero */}
       <section className="relative min-h-[70vh] flex flex-col justify-center px-6 lg:px-8 py-28 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-[var(--color-champagne)]/5 via-transparent to-[var(--color-obsidian)] pointer-events-none" />
@@ -143,9 +146,143 @@ export default function HomePage() {
           </Link>
         </div>
       </section>
+    </>
+  );
+}
 
-      {/* Footer */}
-      <footer className="border-t border-[var(--color-border)] py-12">
+function ClientHome() {
+  return (
+    <>
+      <section className="relative min-h-[50vh] flex flex-col justify-center px-6 lg:px-8 py-20 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-[var(--color-champagne)]/5 via-transparent to-[var(--color-obsidian)] pointer-events-none" />
+        <div className="relative max-w-7xl mx-auto w-full">
+          <p className="text-xs tracking-[0.4em] uppercase text-[var(--color-champagne)] mb-4 opacity-90">
+            Welcome back
+          </p>
+          <h1 className="text-4xl md:text-5xl font-light text-[var(--color-ivory)] max-w-2xl leading-[1.15] tracking-tight">
+            Discover and connect with companions.
+          </h1>
+          <p className="mt-6 text-[var(--color-silver)] font-light max-w-xl text-lg leading-relaxed">
+            Browse profiles, send connection requests, and chat to arrange meetups. Use your credits to connect and message.
+          </p>
+          <div className="mt-10 flex flex-wrap gap-4">
+            <Link
+              href="/companions"
+              className="inline-block px-8 py-4 text-sm tracking-widest uppercase border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)] hover:text-[var(--color-obsidian)] transition"
+            >
+              Browse companions
+            </Link>
+            <Link
+              href="/dashboard"
+              className="inline-block px-8 py-4 text-sm tracking-widest uppercase border border-[var(--color-border)] text-[var(--color-silver)] hover:text-[var(--color-ivory)] hover:border-[var(--color-silver)]/50 transition"
+            >
+              Your account
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <section className="border-y border-[var(--color-border)] py-16">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <h2 className="text-xl font-light text-[var(--color-ivory)] tracking-wide mb-8">
+            Quick links
+          </h2>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <Link href="/companions" className="p-6 border border-[var(--color-border)] bg-[var(--color-charcoal)]/50 rounded-sm hover:border-[var(--color-champagne)]/40 transition block">
+              <h3 className="text-sm tracking-[0.15em] uppercase text-[var(--color-champagne)] mb-2">Companions</h3>
+              <p className="text-[var(--color-silver)] font-light text-sm">Explore and connect with companions.</p>
+            </Link>
+            <Link href="/sexter" className="p-6 border border-[var(--color-border)] bg-[var(--color-charcoal)]/50 rounded-sm hover:border-[var(--color-champagne)]/40 transition block">
+              <h3 className="text-sm tracking-[0.15em] uppercase text-[var(--color-champagne)] mb-2">Sexter</h3>
+              <p className="text-[var(--color-silver)] font-light text-sm">Chat with companions using credits.</p>
+            </Link>
+            <Link href="/dashboard" className="p-6 border border-[var(--color-border)] bg-[var(--color-charcoal)]/50 rounded-sm hover:border-[var(--color-champagne)]/40 transition block">
+              <h3 className="text-sm tracking-[0.15em] uppercase text-[var(--color-champagne)] mb-2">Account</h3>
+              <p className="text-[var(--color-silver)] font-light text-sm">Your connections and profile.</p>
+            </Link>
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
+
+function EscortHome() {
+  return (
+    <>
+      <section className="relative min-h-[50vh] flex flex-col justify-center px-6 lg:px-8 py-20 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-[var(--color-champagne)]/5 via-transparent to-[var(--color-obsidian)] pointer-events-none" />
+        <div className="relative max-w-7xl mx-auto w-full">
+          <p className="text-xs tracking-[0.4em] uppercase text-[var(--color-champagne)] mb-4 opacity-90">
+            Welcome back
+          </p>
+          <h1 className="text-4xl md:text-5xl font-light text-[var(--color-ivory)] max-w-2xl leading-[1.15] tracking-tight">
+            Your companion dashboard.
+          </h1>
+          <p className="mt-6 text-[var(--color-silver)] font-light max-w-xl text-lg leading-relaxed">
+            Manage your profile, view connection requests, and chat with clients. Use Sexter for paid chat sessions.
+          </p>
+          <div className="mt-10 flex flex-wrap gap-4">
+            <Link
+              href="/dashboard"
+              className="inline-block px-8 py-4 text-sm tracking-widest uppercase border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)] hover:text-[var(--color-obsidian)] transition"
+            >
+              Your account
+            </Link>
+            <Link
+              href="/sexter"
+              className="inline-block px-8 py-4 text-sm tracking-widest uppercase border border-[var(--color-border)] text-[var(--color-silver)] hover:text-[var(--color-ivory)] hover:border-[var(--color-silver)]/50 transition"
+            >
+              Sexter
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <section className="border-y border-[var(--color-border)] py-16">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <h2 className="text-xl font-light text-[var(--color-ivory)] tracking-wide mb-8">
+            Quick links
+          </h2>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <Link href="/dashboard" className="p-6 border border-[var(--color-border)] bg-[var(--color-charcoal)]/50 rounded-sm hover:border-[var(--color-champagne)]/40 transition block">
+              <h3 className="text-sm tracking-[0.15em] uppercase text-[var(--color-champagne)] mb-2">Account</h3>
+              <p className="text-[var(--color-silver)] font-light text-sm">Profile, connection requests, and chats.</p>
+            </Link>
+            <Link href="/sexter" className="p-6 border border-[var(--color-border)] bg-[var(--color-charcoal)]/50 rounded-sm hover:border-[var(--color-champagne)]/40 transition block">
+              <h3 className="text-sm tracking-[0.15em] uppercase text-[var(--color-champagne)] mb-2">Sexter</h3>
+              <p className="text-[var(--color-silver)] font-light text-sm">Paid chat sessions with clients.</p>
+            </Link>
+            <Link href="/dashboard/profile" className="p-6 border border-[var(--color-border)] bg-[var(--color-charcoal)]/50 rounded-sm hover:border-[var(--color-champagne)]/40 transition block">
+              <h3 className="text-sm tracking-[0.15em] uppercase text-[var(--color-champagne)] mb-2">Edit profile</h3>
+              <p className="text-[var(--color-silver)] font-light text-sm">Update your photos and services.</p>
+            </Link>
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
+
+export default function HomePage() {
+  const { user, authReady } = useAuth();
+
+  if (!authReady) {
+    return (
+      <div className="pt-16 min-h-[40vh] flex items-center justify-center">
+        <span className="text-[var(--color-silver)]/60">…</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pt-16">
+      {user?.role === "client" && <ClientHome />}
+      {user?.role === "escort" && <EscortHome />}
+      {!user && <GuestHome />}
+
+      {/* Footer — same for all */}
+      <footer className="border-t border-[var(--color-border)] py-12 mt-16">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-6">
           <Link
             href="/"
@@ -157,9 +294,16 @@ export default function HomePage() {
             <Link href="/companions" className="hover:text-[var(--color-ivory)] transition">
               Companions
             </Link>
-            <Link href="/login" className="hover:text-[var(--color-ivory)] transition">
-              Sign in
-            </Link>
+            {!user && (
+              <Link href="/login" className="hover:text-[var(--color-ivory)] transition">
+                Sign in
+              </Link>
+            )}
+            {user && (
+              <Link href="/dashboard" className="hover:text-[var(--color-ivory)] transition">
+                Account
+              </Link>
+            )}
           </div>
         </div>
       </footer>

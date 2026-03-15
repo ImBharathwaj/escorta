@@ -54,7 +54,20 @@ type UserProfile = {
   phone: string | null;
   avatarUrl: string | null;
   avatarSignedUrl?: string | null;
+  orientation?: string | null;
+  preferencesNotes?: string | null;
+  preferredServices?: string[];
 };
+
+const ORIENTATION_OPTIONS = [
+  { value: "", label: "Prefer not to say" },
+  { value: "straight", label: "Straight" },
+  { value: "gay", label: "Gay" },
+  { value: "lesbian", label: "Lesbian" },
+  { value: "bisexual", label: "Bisexual" },
+  { value: "pansexual", label: "Pansexual" },
+  { value: "other", label: "Other" },
+];
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -77,10 +90,17 @@ export default function ProfilePage() {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [orientation, setOrientation] = useState("");
+  const [preferencesNotes, setPreferencesNotes] = useState("");
+  const [selectedPreferredServices, setSelectedPreferredServices] = useState<string[]>([]);
+  const [customPreferredInput, setCustomPreferredInput] = useState("");
 
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoUploadProgress, setPhotoUploadProgress] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState("");
+  const [photoSettingPrimaryId, setPhotoSettingPrimaryId] = useState<string | null>(null);
+  const [photoDeletingId, setPhotoDeletingId] = useState<string | null>(null);
+  const [photoDeleteConfirmId, setPhotoDeleteConfirmId] = useState<string | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -120,6 +140,9 @@ export default function ProfilePage() {
         setDisplayName(data.displayName || "");
         setEmail(data.email || "");
         setPhone(data.phone || "");
+        setOrientation(data.orientation || "");
+        setPreferencesNotes(data.preferencesNotes || "");
+        setSelectedPreferredServices(Array.isArray(data.preferredServices) ? data.preferredServices : []);
         return data;
       }
     } catch {
@@ -171,6 +194,9 @@ export default function ProfilePage() {
           display_name: displayName.trim() || undefined,
           email: email.trim() || undefined,
           phone: phone.trim() || undefined,
+          orientation: orientation.trim() || undefined,
+          preferences_notes: preferencesNotes.trim() || undefined,
+          preferred_services: selectedPreferredServices,
         }),
       });
       if (!res.ok) {
@@ -333,6 +359,49 @@ export default function ProfilePage() {
     }
   }
 
+  async function handleSetPrimary(photoId: string) {
+    if (!profile || !token) return;
+    setPhotoError("");
+    setPhotoSettingPrimaryId(photoId);
+    try {
+      const res = await fetch(`/api/escorts/${profile.id}/photos/${photoId}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to set primary");
+      }
+      await fetchEscortProfile();
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : "Failed to set primary");
+    } finally {
+      setPhotoSettingPrimaryId(null);
+    }
+  }
+
+  async function handleDeletePhoto(photoId: string) {
+    if (!profile || !token) return;
+    setPhotoError("");
+    setPhotoDeletingId(photoId);
+    setPhotoDeleteConfirmId(null);
+    try {
+      const res = await fetch(`/api/escorts/${profile.id}/photos/${photoId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to delete photo");
+      }
+      await fetchEscortProfile();
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : "Failed to delete photo");
+    } finally {
+      setPhotoDeletingId(null);
+    }
+  }
+
   if (loading) {
     return (
       <div className="pt-24 min-h-screen flex items-center justify-center text-[var(--color-silver)] font-light">
@@ -441,6 +510,130 @@ export default function ProfilePage() {
                   className={inputStyles}
                 />
               </div>
+
+              <div className="pt-6 border-t border-[var(--color-border)]">
+                <h2 className="text-sm tracking-[0.2em] uppercase text-[var(--color-silver)] mb-4 font-normal">
+                  Preferences
+                </h2>
+                <p className="text-xs text-[var(--color-muted)] mb-4">
+                  Help us suggest the right companions. Used for matching and suggestions only.
+                </p>
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-xs tracking-[0.15em] uppercase text-[var(--color-silver)] mb-2 font-normal">
+                      Orientation
+                    </label>
+                    <select
+                      value={orientation}
+                      onChange={(e) => setOrientation(e.target.value)}
+                      className={inputStyles}
+                    >
+                      {ORIENTATION_OPTIONS.map((opt) => (
+                        <option key={opt.value || "none"} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs tracking-[0.15em] uppercase text-[var(--color-silver)] mb-2 font-normal">
+                      Services I&apos;m interested in
+                    </label>
+                    <p className="text-xs text-[var(--color-muted)] mb-3">
+                      Select the types of arrangements or services you&apos;re looking for. We&apos;ll use this to suggest compatible companions.
+                    </p>
+                    {selectedPreferredServices.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {selectedPreferredServices.map((name) => (
+                          <span
+                            key={name}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-light text-[var(--color-ivory)] border border-[var(--color-border)] rounded-sm bg-[var(--color-charcoal)]"
+                          >
+                            {name}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedPreferredServices((prev) => prev.filter((n) => n !== name))}
+                              className="text-[var(--color-silver)] hover:text-[var(--color-champagne)] transition"
+                              aria-label={`Remove ${name}`}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-3 mb-4">
+                      {ADULT_SERVICE_LIST.map((name) => (
+                        <label
+                          key={name}
+                          className="flex items-center gap-2 cursor-pointer group"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedPreferredServices.includes(name)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedPreferredServices((prev) => [...prev, name]);
+                              } else {
+                                setSelectedPreferredServices((prev) => prev.filter((n) => n !== name));
+                              }
+                            }}
+                            className="w-4 h-4 rounded border border-[var(--color-border)] bg-[var(--color-charcoal)] text-[var(--color-champagne)] focus:ring-[var(--color-champagne)]/50"
+                          />
+                          <span className="text-sm text-[var(--color-ivory)] group-hover:text-[var(--color-champagne)] transition">
+                            {name}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={customPreferredInput}
+                        onChange={(e) => setCustomPreferredInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            const value = customPreferredInput.trim();
+                            if (value && !selectedPreferredServices.includes(value)) {
+                              setSelectedPreferredServices((prev) => [...prev, value]);
+                              setCustomPreferredInput("");
+                            }
+                          }
+                        }}
+                        placeholder="Add another (type and press Enter)"
+                        className={inputStyles}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const value = customPreferredInput.trim();
+                          if (value && !selectedPreferredServices.includes(value)) {
+                            setSelectedPreferredServices((prev) => [...prev, value]);
+                            setCustomPreferredInput("");
+                          }
+                        }}
+                        className="px-4 py-3 text-sm tracking-widest uppercase border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)] hover:text-[var(--color-obsidian)] transition whitespace-nowrap"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs tracking-[0.15em] uppercase text-[var(--color-silver)] mb-2 font-normal">
+                      Other preferences
+                    </label>
+                    <textarea
+                      value={preferencesNotes}
+                      onChange={(e) => setPreferencesNotes(e.target.value)}
+                      rows={3}
+                      placeholder="e.g. preferred age range, locations, occasions"
+                      className={`${inputStyles} resize-none`}
+                    />
+                  </div>
+                </div>
+              </div>
+
               <button
                 type="submit"
                 disabled={saving}
@@ -471,9 +664,12 @@ export default function ProfilePage() {
                 <h2 className="text-sm tracking-[0.2em] uppercase text-[var(--color-silver)] mb-4 font-normal">
                   Photos
                 </h2>
+                <p className="text-xs text-[var(--color-muted)] mb-4">
+                  Click &quot;Set as primary&quot; to choose the main profile image. You can delete any photo.
+                </p>
                 <div className="flex flex-wrap gap-4">
                   {(profile.photos ?? []).map((p) => (
-                    <div key={p.id} className="relative" onContextMenu={(e) => e.preventDefault()}>
+                    <div key={p.id} className="relative group" onContextMenu={(e) => e.preventDefault()}>
                       <img
                         src={p.imageUrl}
                         alt=""
@@ -486,6 +682,46 @@ export default function ProfilePage() {
                           Primary
                         </span>
                       )}
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex flex-col items-center justify-center gap-1 p-1">
+                        {!p.isPrimary && (
+                          <button
+                            type="button"
+                            onClick={() => handleSetPrimary(p.id)}
+                            disabled={!!photoSettingPrimaryId || !!photoDeletingId}
+                            className="w-full py-1.5 text-[10px] tracking-wider uppercase border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)] hover:text-[var(--color-obsidian)] transition disabled:opacity-50"
+                          >
+                            {photoSettingPrimaryId === p.id ? "…" : "Set as primary"}
+                          </button>
+                        )}
+                        {photoDeleteConfirmId === p.id ? (
+                          <div className="flex gap-1 w-full">
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePhoto(p.id)}
+                              disabled={!!photoDeletingId}
+                              className="flex-1 py-1 text-[10px] uppercase bg-red-600/90 text-white hover:bg-red-600 disabled:opacity-50"
+                            >
+                              {photoDeletingId === p.id ? "…" : "Yes"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPhotoDeleteConfirmId(null)}
+                              className="flex-1 py-1 text-[10px] uppercase border border-[var(--color-silver)] text-[var(--color-silver)] hover:bg-white/10"
+                            >
+                              No
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setPhotoDeleteConfirmId(p.id)}
+                            disabled={!!photoDeletingId || !!photoSettingPrimaryId}
+                            className="w-full py-1.5 text-[10px] tracking-wider uppercase border border-red-400/80 text-red-300 hover:bg-red-500/20 transition disabled:opacity-50"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                   <label className="w-24 h-24 flex flex-col items-center justify-center border border-dashed border-[var(--color-border)] cursor-pointer hover:border-[var(--color-champagne)]/50 transition">
