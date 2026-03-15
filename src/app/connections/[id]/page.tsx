@@ -36,6 +36,7 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [messageError, setMessageError] = useState("");
   const [canSend, setCanSend] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevMessageCountRef = useRef(0);
 
@@ -93,6 +94,7 @@ export default function ChatPage() {
           const next = data.messages || [];
           setMessages((prev) => mergeMessages(prev, next));
           if (typeof data.canSend === "boolean") setCanSend(data.canSend);
+          if (data.currentUserId) setCurrentUserId(data.currentUserId);
         })
         .catch(() => {})
         .finally(() => setLoading(false));
@@ -192,14 +194,16 @@ export default function ChatPage() {
                 No messages yet. Say hello to start the conversation.
               </p>
             ) : (
-              messages.map((m) => (
+              messages.map((m) => {
+                const isMe = m.sender.id === (currentUserId || user?.id);
+                return (
                 <div
                   key={m.id}
-                  className={`flex ${m.sender.id === user?.id ? "justify-end" : "justify-start"}`}
+                  className={`flex ${isMe ? "justify-end" : "justify-start"}`}
                 >
                   <div
                     className={`max-w-[80%] px-4 py-2 rounded-sm ${
-                      m.sender.id === user?.id
+                      isMe
                         ? "bg-[var(--color-champagne)]/20 border border-[var(--color-champagne)]/40 text-[var(--color-ivory)]"
                         : "bg-[var(--color-slate)] border border-[var(--color-border)] text-[var(--color-pearl)]"
                     }`}
@@ -212,7 +216,7 @@ export default function ChatPage() {
                     </p>
                   </div>
                 </div>
-              ))
+              ); })
             )}
             <div ref={bottomRef} />
           </div>

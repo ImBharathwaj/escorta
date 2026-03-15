@@ -399,12 +399,20 @@ function DashboardContent() {
           </button>
         </div>
 
-        <Link
-          href="/dashboard/profile"
-          className="inline-block px-6 py-3 text-sm tracking-widest uppercase border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)] hover:text-[var(--color-obsidian)] transition"
-        >
-          {user?.role === "escort" ? "Manage profile" : "Profile & preferences"}
-        </Link>
+        <div className="flex flex-wrap gap-3 mt-6">
+          <Link
+            href="/dashboard/profile"
+            className="inline-block px-6 py-3 text-sm tracking-widest uppercase border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)] hover:text-[var(--color-obsidian)] transition"
+          >
+            {user?.role === "escort" ? "Manage profile" : "Profile & preferences"}
+          </Link>
+          <Link
+            href="/dashboard/credits"
+            className="inline-block px-6 py-3 text-sm tracking-widest uppercase border border-[var(--color-border)] text-[var(--color-silver)] hover:text-[var(--color-ivory)] hover:border-[var(--color-silver)]/50 transition"
+          >
+            {user?.role === "escort" ? "Credits earned" : "Credit usage"}
+          </Link>
+        </div>
 
         <div className="mt-16">
           <Link

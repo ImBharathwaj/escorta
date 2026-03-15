@@ -6,6 +6,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useRef,
   type ReactNode,
 } from "react";
 
@@ -23,10 +24,15 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+function clearAuth() {
+  if (typeof window !== "undefined") localStorage.removeItem("token");
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const retryRef = useRef(false);
 
   useEffect(() => {
     const t = typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -35,17 +41,70 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     setToken(t);
-    fetch("/api/auth/me", {
-      headers: { Authorization: `Bearer ${t}` },
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((u) => u && setUser(u))
-      .catch(() => {
-        localStorage.removeItem("token");
-        setToken(null);
-        setUser(null);
+
+    function onSuccess(u: User) {
+      setUser(u);
+      setAuthReady(true);
+    }
+    function onUnauthorized() {
+      clearAuth();
+      setToken(null);
+      setUser(null);
+      setAuthReady(true);
+    }
+
+    fetch("/api/auth/me", { headers: { Authorization: `Bearer ${t}` } })
+      .then(async (r) => {
+        if (r.status === 401 || r.status === 403) {
+          onUnauthorized();
+          return;
+        }
+        if (!r.ok) {
+          setAuthReady(true);
+          return;
+        }
+        try {
+          const u = await r.json();
+          if (u && typeof u.id === "string") {
+            onSuccess(u);
+          } else {
+            setAuthReady(true);
+          }
+        } catch {
+          setAuthReady(true);
+        }
       })
-      .finally(() => setAuthReady(true));
+      .catch(() => {
+        setAuthReady(true);
+        if (retryRef.current) return;
+        retryRef.current = true;
+        setTimeout(() => {
+          fetch("/api/auth/me", { headers: { Authorization: `Bearer ${t}` } })
+            .then(async (res) => {
+              if (res.ok) {
+                try {
+                  const u = await res.json();
+                  if (u && typeof u.id === "string") {
+                    setUser(u);
+                  }
+                } catch {
+                  clearAuth();
+                  setToken(null);
+                  setUser(null);
+                }
+              } else {
+                clearAuth();
+                setToken(null);
+                setUser(null);
+              }
+            })
+            .catch(() => {
+              clearAuth();
+              setToken(null);
+              setUser(null);
+            });
+        }, 800);
+      });
   }, []);
 
   const login = useCallback((t: string, u: User) => {

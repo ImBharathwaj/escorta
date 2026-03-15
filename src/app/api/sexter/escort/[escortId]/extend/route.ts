@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
 import { SEXTER_SESSION_CREDITS, SEXTER_SESSION_MINUTES } from "@/lib/credits";
+import { recordClientSpendAndCompanionEarn } from "@/lib/creditLedger";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 
@@ -67,6 +68,14 @@ export async function POST(
       data: { credits: { decrement: SEXTER_SESSION_CREDITS } },
     }),
   ]);
+
+  await recordClientSpendAndCompanionEarn({
+    clientUserId: payload.userId,
+    escortId,
+    amount: SEXTER_SESSION_CREDITS,
+    type: "sexter_extend",
+    sexterSessionId: session.id,
+  });
 
   return NextResponse.json({ expiresAt: newExpiresAt });
 }

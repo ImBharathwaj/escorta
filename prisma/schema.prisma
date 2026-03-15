@@ -8,30 +8,52 @@ datasource db {
 }
 
 model User {
-  id              String   @id @default(uuid())
-  role            String   // client | escort | admin
-  email           String?  @unique
-  phone           String?
-  displayName     String?  @map("display_name")
-  avatarUrl       String?  @map("avatar_url")
-  passwordHash    String   @map("password_hash")
-  isActive        Boolean  @default(true) @map("is_active")
-  isBanned        Boolean  @default(false) @map("is_banned")
-  isPremiumMember Boolean  @default(false) @map("is_premium_member")
-  credits         Int      @default(0)
-  emailVerifiedAt DateTime? @map("email_verified_at")
-  deletedAt       DateTime? @map("deleted_at")
-  lastLogin       DateTime? @map("last_login")
-  lastActiveAt    DateTime? @map("last_active_at")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id               String   @id @default(uuid())
+  role             String   // client | escort | admin
+  email            String?  @unique
+  phone            String?
+  displayName      String?  @map("display_name")
+  avatarUrl        String?  @map("avatar_url")
+  passwordHash     String   @map("password_hash")
+  isActive         Boolean  @default(true) @map("is_active")
+  isBanned         Boolean  @default(false) @map("is_banned")
+  isPremiumMember  Boolean  @default(false) @map("is_premium_member")
+  credits          Int      @default(0)
+  emailVerifiedAt  DateTime? @map("email_verified_at")
+  deletedAt        DateTime? @map("deleted_at")
+  lastLogin        DateTime? @map("last_login")
+  lastActiveAt     DateTime? @map("last_active_at")
+  // Client preferences (for suggestions and matching)
+  orientation      String?  // e.g. straight | gay | bisexual | other
+  preferencesNotes String?  @map("preferences_notes")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
-  escortProfile     EscortProfile?
-  bookingsAsClient  Booking[]       @relation("ClientBookings")
-  sentMessages      Message[]
-  sexterMessages    SexterMessage[]
+  escortProfile         EscortProfile?
+  clientPreferredServices ClientAdultService[]
+  bookingsAsClient      Booking[]       @relation("ClientBookings")
+  sentMessages          Message[]
+  sexterMessages        SexterMessage[]
   sexterSessionsAsClient SexterSession[] @relation("SexterClient")
   emailVerificationTokens EmailVerificationToken[]
+  creditTransactions    CreditTransaction[] @relation("CreditTransactionsAsUser")
+  creditTransactionsRelated CreditTransaction[] @relation("CreditTransactionsRelatedUser")
+}
+
+model CreditTransaction {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  user          User     @relation("CreditTransactionsAsUser", fields: [userId], references: [id], onDelete: Cascade)
+  amount        Int      // negative = spent (client), positive = earned (companion) or bonus
+  type          String   // connect | message | sexter_session | sexter_extend | sexter_earned | signup_bonus
+  referenceType String?  @map("reference_type") // booking | sexter_session
+  referenceId   String?  @map("reference_id")
+  relatedUserId String?  @map("related_user_id")
+  relatedUser   User?    @relation("CreditTransactionsRelatedUser", fields: [relatedUserId], references: [id], onDelete: SetNull)
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([userId, createdAt])
 }
 
 model EmailVerificationToken {
@@ -92,7 +114,17 @@ model AdultService {
   id   String @id @default(uuid())
   name String @unique
 
-  escorts EscortAdultService[]
+  escorts            EscortAdultService[]
+  clientPreferences  ClientAdultService[]
+}
+
+model ClientAdultService {
+  userId          String @map("user_id")
+  adultServiceId  String @map("adult_service_id")
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  adultService    AdultService @relation(fields: [adultServiceId], references: [id], onDelete: Cascade)
+
+  @@id([userId, adultServiceId])
 }
 
 model EscortAdultService {

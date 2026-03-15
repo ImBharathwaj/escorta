@@ -5,7 +5,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { CompanionsLink } from "@/components/CompanionsLink";
 
 export function Header() {
-  const { user, authReady } = useAuth();
+  const { user, token, authReady } = useAuth();
+  const authPending = !authReady || (token != null && user == null);
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 border-b border-[var(--color-border)]/80 bg-[var(--color-obsidian)]/90 backdrop-blur-md">
@@ -39,7 +40,7 @@ export function Header() {
               Unlock
             </Link>
           )}
-          {!authReady ? (
+          {authPending ? (
             <span className="text-sm tracking-widest uppercase text-[var(--color-silver)]/60">
               …
             </span>
