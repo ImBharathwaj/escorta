@@ -5,17 +5,21 @@ import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { sendVerificationEmail } from "@/lib/email";
 import { recordCreditTransaction } from "@/lib/creditLedger";
+import { rateLimit } from "@/lib/rateLimit";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 const VERIFICATION_EXPIRY_HOURS = 24;
 
 export async function POST(req: NextRequest) {
+  const limited = rateLimit(req, { keyPrefix: "auth:register", limit: 6, windowMs: 60_000 });
+  if (limited) return limited;
+
   try {
     const { email, phone, password, role = "client" } = await req.json();
 
-    if (!password || password.length < 6) {
+    if (!password || password.length < 8) {
       return NextResponse.json(
-        { error: "Password must be at least 6 characters" },
+        { error: "Password must be at least 8 characters" },
         { status: 400 }
       );
     }
@@ -87,6 +91,7 @@ export async function POST(req: NextRequest) {
         { status: 409 }
       );
     }
-    throw e;
+    console.error("[auth/register] error", e);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

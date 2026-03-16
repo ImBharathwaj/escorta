@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import { Room } from "livekit-client";
+import { Room, LocalTrackPublication, LocalParticipant } from "livekit-client";
 
 type LiveSession = { id: string; roomName: string; startedAt: string };
 type VodItem = { id: string; createdAt: string; playbackUrl: string };
@@ -29,6 +29,11 @@ export default function GoLivePage() {
   const [vodUploading, setVodUploading] = useState(false);
   const vodVideoRef = useRef<HTMLVideoElement | null>(null);
   const [viewerCount, setViewerCount] = useState(0);
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+  type TipToast = { id: string; clientName: string; amount: number; createdAt: string };
+  const [tipToasts, setTipToasts] = useState<TipToast[]>([]);
+  const seenTipIdsRef = useRef<Set<string>>(new Set());
+  const tipRemoveTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
     if (!authReady) return;
@@ -78,6 +83,48 @@ export default function GoLivePage() {
     return () => clearInterval(id);
   }, [session?.id, fetchViewerCount]);
 
+  const hasFetchedTipsOnceRef = useRef(false);
+  const fetchLiveTips = useCallback(() => {
+    if (!session?.id || !token) return;
+    fetch(`/api/live/${session.id}/tips`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((d) => {
+        const tips = Array.isArray(d.tips) ? d.tips : [];
+        const seen = seenTipIdsRef.current;
+        const isFirstFetch = !hasFetchedTipsOnceRef.current;
+        if (isFirstFetch) {
+          hasFetchedTipsOnceRef.current = true;
+          tips.forEach((t: TipToast) => seen.add(t.id));
+          return;
+        }
+        const newTips = tips.filter((t: TipToast) => !seen.has(t.id));
+        if (newTips.length === 0) return;
+        newTips.forEach((t: TipToast) => seen.add(t.id));
+        const TIP_TOAST_DURATION_MS = 5000;
+        setTipToasts((prev) => [...prev, ...newTips]);
+        newTips.forEach((t: TipToast) => {
+          const tid = setTimeout(() => {
+            setTipToasts((p) => p.filter((x) => x.id !== t.id));
+          }, TIP_TOAST_DURATION_MS);
+          if (tipRemoveTimeoutsRef.current[t.id] != null) clearTimeout(tipRemoveTimeoutsRef.current[t.id]);
+          tipRemoveTimeoutsRef.current[t.id] = tid;
+        });
+      })
+      .catch(() => {});
+  }, [session?.id, token]);
+  useEffect(() => {
+    if (!session?.id) return;
+    seenTipIdsRef.current = new Set();
+    hasFetchedTipsOnceRef.current = false;
+    fetchLiveTips();
+    const id = setInterval(fetchLiveTips, 4000);
+    return () => {
+      clearInterval(id);
+      Object.values(tipRemoveTimeoutsRef.current).forEach(clearTimeout);
+      tipRemoveTimeoutsRef.current = {};
+    };
+  }, [session?.id, fetchLiveTips]);
+
   const startLive = async () => {
     if (!token) return;
     if (liveSource === "vod" && !selectedVodId) {
@@ -113,7 +160,8 @@ export default function GoLivePage() {
           videoEl.src = playbackUrl;
           videoEl.play().catch(reject);
         });
-        const stream = videoEl.captureStream ? videoEl.captureStream(30) : (videoEl as HTMLVideoElement & { mozCaptureStream?: (fps?: number) => MediaStream }).mozCaptureStream?.(30);
+        const vid = videoEl as HTMLVideoElement & { captureStream?(fps?: number): MediaStream; mozCaptureStream?(fps?: number): MediaStream };
+        const stream = vid.captureStream?.(30) ?? vid.mozCaptureStream?.(30);
         if (!stream) throw new Error("Browser does not support capturing video");
         const videoTrack = stream.getVideoTracks()[0];
         const audioTrack = stream.getAudioTracks()[0];
@@ -165,6 +213,20 @@ export default function GoLivePage() {
       if (r) r.disconnect();
     };
   }, [room]);
+
+  const deleteMessage = async (messageId: string) => {
+    if (!session?.id || !token || deletingMessageId) return;
+    setDeletingMessageId(messageId);
+    try {
+      const res = await fetch(`/api/live/${session.id}/messages/${messageId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) fetchChat();
+    } finally {
+      setDeletingMessageId(null);
+    }
+  };
 
   const sendChat = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -306,6 +368,23 @@ export default function GoLivePage() {
                     {viewerCount} watching
                   </span>
                 </div>
+                <div className="absolute top-3 right-3 flex flex-col gap-2 max-w-[280px] pointer-events-none">
+                  {tipToasts.map((t) => (
+                    <div
+                      key={t.id}
+                      className="animate-live-tip-in px-4 py-3 rounded-lg border border-[var(--color-champagne)]/60 bg-[var(--color-obsidian)]/95 shadow-lg backdrop-blur-sm"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <p className="text-sm font-medium text-[var(--color-champagne)]">
+                        {t.clientName} tipped you
+                      </p>
+                      <p className="text-lg font-semibold text-[var(--color-ivory)] mt-0.5">
+                        {t.amount} credit{t.amount !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
               <div className="w-full lg:w-80 flex flex-col border border-[var(--color-border)] bg-[var(--color-charcoal)] rounded">
                 <div className="p-3 border-b border-[var(--color-border)] text-sm text-[var(--color-silver)]">
@@ -314,10 +393,21 @@ export default function GoLivePage() {
                 <div className="flex-1 overflow-y-auto min-h-[200px] max-h-[300px] p-3 space-y-2">
                   {chatMessages.length === 0 && <p className="text-[var(--color-muted)] text-sm">No messages yet.</p>}
                   {chatMessages.map((m) => (
-                    <p key={m.id} className="text-sm">
-                      <span className="text-[var(--color-champagne)]">{m.sender.name}:</span>{" "}
-                      <span className="text-[var(--color-ivory)]">{m.message}</span>
-                    </p>
+                    <div key={m.id} className="flex items-start justify-between gap-2 group">
+                      <p className="text-sm flex-1 min-w-0">
+                        <span className="text-[var(--color-champagne)]">{m.sender.name}:</span>{" "}
+                        <span className="text-[var(--color-ivory)]">{m.message}</span>
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => deleteMessage(m.id)}
+                        disabled={deletingMessageId === m.id}
+                        className="flex-shrink-0 text-[var(--color-muted)] hover:text-red-400 text-xs px-1 opacity-0 group-hover:opacity-100 transition disabled:opacity-50"
+                        title="Delete message"
+                      >
+                        {deletingMessageId === m.id ? "…" : "×"}
+                      </button>
+                    </div>
                   ))}
                 </div>
                 <form onSubmit={sendChat} className="p-3 border-t border-[var(--color-border)] flex gap-2">
@@ -366,10 +456,7 @@ function LivePreview({ room }: { room: Room }) {
         }
       }
     };
-    const onLocalTrackPublished = (
-      publication: { kind: string; track?: { attach: (el: HTMLVideoElement) => HTMLVideoElement; mediaStreamTrack?: MediaStreamTrack } },
-      _participant: unknown
-    ) => {
+    const onLocalTrackPublished = (publication: LocalTrackPublication, _participant: LocalParticipant) => {
       if (publication.kind === "video" && publication.track && videoEl) {
         const track = publication.track;
         if (typeof track.attach === "function") {

@@ -111,6 +111,26 @@ function GuestHome() {
         </div>
       </section>
 
+      {/* Image gallery CTA */}
+      <section className="py-24">
+        <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
+          <h2 className="text-2xl md:text-3xl font-light text-[var(--color-ivory)] tracking-wide mb-4">
+            Browse our image gallery
+          </h2>
+          <p className="text-[var(--color-silver)] font-light mb-8 text-sm md:text-base">
+            See curated, non‑explicit images that reflect different companion scenarios—dinner dates,
+            travel, and events across India. These galleries help you visualise what&apos;s possible with
+            Escorta.
+          </p>
+          <Link
+            href="/gallery"
+            className="inline-block px-8 py-4 text-sm tracking-widest uppercase border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)] hover:text-[var(--color-obsidian)] transition"
+          >
+            View image gallery
+          </Link>
+        </div>
+      </section>
+
       {/* CTA — Browse companions */}
       <section className="py-24">
         <div className="max-w-3xl mx-auto px-6 lg:px-8 text-center">

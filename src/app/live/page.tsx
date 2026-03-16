@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import { Room } from "livekit-client";
+import { Room, RemoteTrack, RemoteTrackPublication, RemoteParticipant } from "livekit-client";
 import { BlurredImage } from "@/components/BlurredImage";
+import { TipButton } from "@/components/TipButton";
 
 type LiveSessionSummary = {
   id: string;
@@ -35,6 +36,10 @@ export default function LivePage() {
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [viewerCount, setViewerCount] = useState<number>(0);
   const [liveEnded, setLiveEnded] = useState(false);
+  const [reportSent, setReportSent] = useState(false);
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState("");
 
   useEffect(() => {
     if (!authReady) return;
@@ -160,6 +165,7 @@ export default function LivePage() {
     setWatchExpired(false);
     setSecondsLeft(null);
     setLiveEnded(false);
+    setReportSent(false);
   };
 
   // Timer: disconnect when watch time expires (do not call leave so user can extend and re-join)
@@ -220,6 +226,25 @@ export default function LivePage() {
       if (r) r.disconnect();
     };
   }, [room]);
+
+  const reportSession = async () => {
+    if (!currentSession?.id || !token || reportSubmitting) return;
+    setReportSubmitting(true);
+    try {
+      const res = await fetch(`/api/live/${currentSession.id}/report`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ reason: reportReason.trim() || undefined }),
+      });
+      if (res.ok) {
+        setReportSent(true);
+        setShowReportModal(false);
+        setReportReason("");
+      }
+    } finally {
+      setReportSubmitting(false);
+    }
+  };
 
   const sendChat = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -314,16 +339,57 @@ export default function LivePage() {
                       </button>
                     </div>
                   )}
-                  <button
-                    type="button"
-                    onClick={leaveSession}
-                    className="absolute top-3 right-3 px-4 py-2 text-sm bg-black/60 text-white rounded hover:bg-black/80"
-                  >
-                    Leave
-                  </button>
+                  <div className="absolute top-3 right-3 flex items-center gap-2">
+                    <TipButton
+                      context="live_session"
+                      referenceId={currentSession.id}
+                      recipientName={currentSession.escort.aliasName}
+                      token={token}
+                      onSuccess={refreshUser}
+                      className="px-4 py-2 text-sm bg-black/60 text-white rounded hover:bg-black/80"
+                      disabled={!!liveEnded}
+                    />
+                    {!reportSent ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowReportModal(true)}
+                        className="px-4 py-2 text-sm bg-black/60 text-white rounded hover:bg-black/80"
+                      >
+                        Report
+                      </button>
+                    ) : (
+                      <span className="px-3 py-2 text-xs text-white/80">Report submitted</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={leaveSession}
+                      className="px-4 py-2 text-sm bg-black/60 text-white rounded hover:bg-black/80"
+                    >
+                      Leave
+                    </button>
+                  </div>
                 </>
               )}
             </div>
+            {showReportModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => !reportSubmitting && setShowReportModal(false)}>
+                <div className="bg-[var(--color-charcoal)] border border-[var(--color-border)] rounded p-6 max-w-md w-full shadow-xl" onClick={(e) => e.stopPropagation()}>
+                  <h3 className="text-lg font-light text-[var(--color-ivory)] mb-2">Report this stream</h3>
+                  <p className="text-sm text-[var(--color-silver)] mb-4">Your report will be reviewed. Optional reason:</p>
+                  <textarea
+                    value={reportReason}
+                    onChange={(e) => setReportReason(e.target.value)}
+                    placeholder="Reason (optional)"
+                    rows={3}
+                    className="w-full px-3 py-2 bg-[var(--color-obsidian)] border border-[var(--color-border)] text-[var(--color-ivory)] text-sm rounded mb-4 resize-none"
+                  />
+                  <div className="flex gap-3 justify-end">
+                    <button type="button" onClick={() => !reportSubmitting && setShowReportModal(false)} className="px-4 py-2 text-sm text-[var(--color-silver)] hover:text-[var(--color-ivory)]" disabled={reportSubmitting}>Cancel</button>
+                    <button type="button" onClick={reportSession} disabled={reportSubmitting} className="px-4 py-2 text-sm bg-red-600/80 text-white rounded hover:bg-red-600 disabled:opacity-50">{reportSubmitting ? "…" : "Submit report"}</button>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="w-full lg:w-80 flex flex-col border border-[var(--color-border)] bg-[var(--color-charcoal)] rounded">
               <div className="p-3 border-b border-[var(--color-border)] text-sm text-[var(--color-silver)]">
                 Live chat
@@ -335,17 +401,32 @@ export default function LivePage() {
                     <span className="text-[var(--color-ivory)]">{m.message}</span>
                   </p>
                 ))}
+                {!liveEnded && watchExpired && (
+                  <p className="text-xs text-[var(--color-silver)] mt-2">
+                    Your chat is paused. Extend your watch time to keep chatting.
+                  </p>
+                )}
               </div>
               <form onSubmit={sendChat} className="p-3 border-t border-[var(--color-border)] flex gap-2">
                 <input
                   type="text"
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  placeholder={liveEnded ? "Stream ended" : "Type a message…"}
-                  disabled={liveEnded}
+                  placeholder={
+                    liveEnded
+                      ? "Stream ended"
+                      : watchExpired
+                      ? "Extend watch time to keep chatting"
+                      : "Type a message…"
+                  }
+                  disabled={liveEnded || watchExpired}
                   className="flex-1 px-3 py-2 bg-[var(--color-obsidian)] border border-[var(--color-border)] text-[var(--color-ivory)] text-sm focus:border-[var(--color-champagne)]/50 disabled:opacity-50"
                 />
-                <button type="submit" disabled={sendingChat || liveEnded} className="px-4 py-2 text-sm border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)]/10 disabled:opacity-50">
+                <button
+                  type="submit"
+                  disabled={sendingChat || liveEnded || watchExpired}
+                  className="px-4 py-2 text-sm border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)]/10 disabled:opacity-50"
+                >
                   Send
                 </button>
               </form>
@@ -422,11 +503,7 @@ function WatchStream({ room }: { room: Room }) {
 
   useEffect(() => {
     if (!videoEl || !room) return;
-    const onTrackSubscribed = (
-      track: { kind: string; mediaStreamTrack: MediaStreamTrack; attach?: (el: HTMLVideoElement) => HTMLVideoElement },
-      _publication: unknown,
-      _participant: unknown
-    ) => {
+    const onTrackSubscribed = (track: RemoteTrack, _publication: RemoteTrackPublication, _participant: RemoteParticipant) => {
       if (!videoEl) return;
       if (track.kind === "video") {
         if (typeof track.attach === "function") {

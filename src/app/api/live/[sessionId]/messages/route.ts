@@ -43,7 +43,7 @@ export async function GET(
   if (!allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const messages = await prisma.liveSessionMessage.findMany({
-    where: { liveSessionId: sessionId },
+    where: { liveSessionId: sessionId, deletedAt: null },
     orderBy: { createdAt: "asc" },
     include: { sender: { select: { id: true, displayName: true, escortProfile: { select: { aliasName: true } } } } },
   });

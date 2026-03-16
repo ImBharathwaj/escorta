@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { BlurredImage } from "@/components/BlurredImage";
+import { TipButton } from "@/components/TipButton";
 
 type Message = {
   id: string;
@@ -12,6 +13,8 @@ type Message = {
   createdAt: string;
   sender: { id: string; role: string };
 };
+
+type BookingTip = { id: string; amount: number; clientName: string; createdAt: string };
 
 function mergeMessages(prev: Message[], next: Message[]): Message[] {
   if (!next?.length) return prev;
@@ -43,8 +46,16 @@ export default function ChatPage() {
   const [videoCallLoading, setVideoCallLoading] = useState(false);
   const [pendingVideoRequestId, setPendingVideoRequestId] = useState<string | null>(null);
   const [pendingVideoRequests, setPendingVideoRequests] = useState<{ id: string; clientId: string; clientName: string }[]>([]);
+  const [bookingTips, setBookingTips] = useState<BookingTip[]>([]);
+  const [reporting, setReporting] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [reportMessage, setReportMessage] = useState("");
+  const [blocking, setBlocking] = useState(false);
+  const [blocked, setBlocked] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevMessageCountRef = useRef(0);
+  const seenBookingTipIdsRef = useRef<Set<string>>(new Set());
+  const bookingTipRemoveTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
     if (!authReady) return;
@@ -157,6 +168,42 @@ export default function ChatPage() {
     }
   }, [messages]);
 
+  useEffect(() => {
+    if (!token || user?.role !== "escort") return;
+    seenBookingTipIdsRef.current = new Set();
+    const fetchTips = () => {
+      fetch(`/api/bookings/${id}/tips`, { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => r.json())
+        .then((d) => {
+          const tips = Array.isArray(d.tips) ? d.tips : [];
+          const seen = seenBookingTipIdsRef.current;
+          const newOnes = tips.filter((t: BookingTip) => !seen.has(t.id));
+          if (!newOnes.length) return;
+          newOnes.forEach((t: BookingTip) => seen.add(t.id));
+          const DURATION = 5000;
+          setBookingTips((prev) => [...prev, ...newOnes]);
+          newOnes.forEach((t: BookingTip) => {
+            const tid = setTimeout(
+              () => setBookingTips((p) => p.filter((x) => x.id !== t.id)),
+              DURATION
+            );
+            if (bookingTipRemoveTimeoutsRef.current[t.id] != null) {
+              clearTimeout(bookingTipRemoveTimeoutsRef.current[t.id]);
+            }
+            bookingTipRemoveTimeoutsRef.current[t.id] = tid;
+          });
+        })
+        .catch(() => {});
+    };
+    fetchTips();
+    const interval = setInterval(fetchTips, 4000);
+    return () => {
+      clearInterval(interval);
+      Object.values(bookingTipRemoveTimeoutsRef.current).forEach(clearTimeout);
+      bookingTipRemoveTimeoutsRef.current = {};
+    };
+  }, [token, user?.role, id]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim() || !token || sending) return;
@@ -186,6 +233,36 @@ export default function ChatPage() {
     }
   }
 
+  async function handleReport(e: React.FormEvent) {
+    e.preventDefault();
+    if (!token || reporting) return;
+    setReportMessage("");
+    setReporting(true);
+    try {
+      const res = await fetch("/api/reports", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          reportType: "booking",
+          referenceId: id,
+          reason: reportReason.trim(),
+        }),
+      });
+      if (res.ok) {
+        setReportMessage("Thanks, your report has been submitted to our team.");
+        setReportReason("");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setReportMessage(data.error || "Could not submit report. Please try again.");
+      }
+    } finally {
+      setReporting(false);
+    }
+  }
+
   if (!token) return null;
 
   return (
@@ -199,7 +276,7 @@ export default function ChatPage() {
         </Link>
 
         <div className="border border-[var(--color-border)] bg-[var(--color-charcoal)] rounded-sm flex-1 flex flex-col min-h-[400px]">
-          <div className="p-4 border-b border-[var(--color-border)] flex items-center gap-4">
+          <div className="p-4 border-b border-[var(--color-border)] flex items-center gap-4 relative">
             <div className="w-12 h-12 rounded-full overflow-hidden border border-[var(--color-border)] bg-[var(--color-slate)] flex-shrink-0 flex items-center justify-center">
               {otherPhotoId ? (
                 <BlurredImage
@@ -225,6 +302,10 @@ export default function ChatPage() {
               </h1>
               <p className="text-xs text-[var(--color-silver)] mt-1">
                 For connection and arranging meetups
+              </p>
+              <p className="text-[0.7rem] text-[var(--color-muted)] mt-1 max-w-md">
+                Safety tip: keep chat inside Escorta, don&apos;t share phone numbers, socials, or payment links, and if
+                anything feels off you can end the chat and block/report this user.
               </p>
             </div>
             {user?.role === "client" && canSend && escortId && (
@@ -291,6 +372,42 @@ export default function ChatPage() {
                 );
               })()
             )}
+            {!blocked && (
+              <button
+                type="button"
+                disabled={blocking}
+                onClick={async () => {
+                  if (!token || !id || blocking) return;
+                  if (!confirm("Block this user? You won't be able to message or connect with them again.")) return;
+                  setBlocking(true);
+                  try {
+                    const res = await fetch(`/api/bookings/${id}/block`, {
+                      method: "POST",
+                      headers: { Authorization: `Bearer ${token}` },
+                    });
+                    if (res.ok) {
+                      setBlocked(true);
+                      router.push("/dashboard");
+                    }
+                  } finally {
+                    setBlocking(false);
+                  }
+                }}
+                className="flex-shrink-0 px-2 py-1.5 text-xs border border-red-500/60 text-red-300/90 hover:bg-red-500/10 disabled:opacity-50 transition"
+              >
+                {blocking ? "Blocking…" : "Block"}
+              </button>
+            )}
+            {user?.role === "client" && canSend && (
+              <TipButton
+                context="booking"
+                referenceId={id}
+                recipientName={otherName || "Companion"}
+                token={token}
+                onSuccess={refreshUser}
+                className="flex-shrink-0 px-3 py-2 text-sm border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)]/10 disabled:opacity-50"
+              />
+            )}
             {user?.role === "escort" && (() => {
               const fromThisClient = clientIdForEscort ? pendingVideoRequests.filter((r: { clientId: string }) => r.clientId === clientIdForEscort) : [];
               const hasActiveWithThisClient = activeVideoCall && activeVideoCall.other.id === clientIdForEscort;
@@ -351,6 +468,23 @@ export default function ChatPage() {
               }
               return null;
             })()}
+            {user?.role === "escort" && bookingTips.length > 0 && (
+              <div className="absolute top-2 right-3 flex flex-col gap-2 max-w-[260px] pointer-events-none">
+                {bookingTips.map((t) => (
+                  <div
+                    key={t.id}
+                    className="px-3 py-2 rounded bg-[var(--color-obsidian)]/95 border border-[var(--color-champagne)]/60 shadow-lg"
+                  >
+                    <p className="text-xs font-medium text-[var(--color-champagne)]">
+                      {t.clientName} tipped you
+                    </p>
+                    <p className="text-xs text-[var(--color-ivory)]">
+                      {t.amount} credit{t.amount !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -426,6 +560,35 @@ export default function ChatPage() {
               </div>
             </form>
           </div>
+        </div>
+
+        <div className="border-t border-[var(--color-border)] px-4 py-3 bg-[var(--color-charcoal)]/80">
+          <details className="text-xs text-[var(--color-muted)]">
+            <summary className="cursor-pointer select-none text-[var(--color-silver)]">
+              Something feels off? Report this chat.
+            </summary>
+            <form onSubmit={handleReport} className="mt-2 space-y-2">
+              <textarea
+                value={reportReason}
+                onChange={(e) => setReportReason(e.target.value)}
+                rows={2}
+                className="w-full px-2 py-1 bg-[var(--color-obsidian)] border border-[var(--color-border)] rounded-sm text-[var(--color-ivory)] text-xs"
+                placeholder="Optional: briefly describe what happened."
+              />
+              <div className="flex items-center justify-between">
+                <button
+                  type="submit"
+                  disabled={reporting}
+                  className="px-3 py-1 text-[0.7rem] tracking-widest uppercase border border-red-500/80 text-red-300 hover:bg-red-500/20 disabled:opacity-50 rounded-sm"
+                >
+                  {reporting ? "Sending…" : "Report"}
+                </button>
+                {reportMessage && (
+                  <p className="text-[0.7rem] text-[var(--color-silver)] max-w-xs text-right">{reportMessage}</p>
+                )}
+              </div>
+            </form>
+          </details>
         </div>
       </div>
     </div>

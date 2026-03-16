@@ -22,6 +22,7 @@ export async function GET(req: NextRequest) {
   const minPrice = searchParams.get("minPrice");
   const maxPrice = searchParams.get("maxPrice");
   const service = searchParams.get("service");
+  const language = searchParams.get("language");
 
   const where: Record<string, unknown> = { isActive: true };
 
@@ -45,6 +46,11 @@ export async function GET(req: NextRequest) {
           name: { contains: service, mode: "insensitive" },
         },
       },
+    };
+  }
+  if (language) {
+    where.languages = {
+      has: language,
     };
   }
 
@@ -72,6 +78,7 @@ export async function GET(req: NextRequest) {
     is_verified: e.isVerified,
     is_active: e.isActive,
     created_at: e.createdAt,
+    languages: e.languages ?? [],
     primary_photo: e.photos[0]?.imageUrl ?? null,
   }));
 

@@ -14,17 +14,17 @@ function getUser(req: NextRequest) {
   }
 }
 
-/** GET: List notifications for current user (unread first, then by date). */
+/** GET: List recent notifications for current user (latest first). */
 export async function GET(req: NextRequest) {
   const payload = getUser(req);
   if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const limit = Math.min(parseInt(req.nextUrl.searchParams.get("limit") || "30", 10) || 30, 50);
+  const limit = Math.min(parseInt(req.nextUrl.searchParams.get("limit") || "5", 10) || 5, 5);
 
   const [notifications, unreadCount] = await Promise.all([
     prisma.notification.findMany({
       where: { userId: payload.userId },
-      orderBy: [{ readAt: "asc" }, { createdAt: "desc" }],
+      orderBy: [{ createdAt: "desc" }],
       take: limit,
       select: {
         id: true,

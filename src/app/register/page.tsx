@@ -24,8 +24,8 @@ export default function RegisterPage() {
       setError("Email and password required");
       return;
     }
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters");
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters");
       return;
     }
     setLoading(true);
@@ -44,9 +44,9 @@ export default function RegisterPage() {
         return;
       }
       if (data.user?.email && !data.user?.emailVerifiedAt) {
-        router.push("/dashboard?verify=1");
+        router.push("/dashboard/profile?verify=1");
       } else {
-        router.push(role === "escort" ? "/dashboard" : "/");
+        router.push("/dashboard/profile");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
@@ -103,7 +103,7 @@ export default function RegisterPage() {
               onChange={(e) => setPassword(e.target.value)}
               className={inputStyles}
               required
-              minLength={6}
+              minLength={8}
             />
           </div>
           <div>
@@ -155,6 +155,28 @@ export default function RegisterPage() {
           >
             Sign in
           </Link>
+        </p>
+        <p className="mt-4 text-[var(--color-muted)] font-light text-[11px] leading-relaxed">
+          By creating an account, you confirm that you are at least 18 years old and you agree to
+          our{" "}
+          <Link href="/terms" className="underline underline-offset-4 hover:text-[var(--color-ivory)]">
+            Terms of Service
+          </Link>
+          ,{" "}
+          <Link
+            href="/privacy"
+            className="underline underline-offset-4 hover:text-[var(--color-ivory)]"
+          >
+            Privacy Policy
+          </Link>{" "}
+          and{" "}
+          <Link
+            href="/guidelines"
+            className="underline underline-offset-4 hover:text-[var(--color-ivory)]"
+          >
+            Community Guidelines
+          </Link>
+          .
         </p>
       </div>
     </div>

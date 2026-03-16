@@ -1,9 +1,19 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import EscortFilters from "@/components/escort/EscortFilters";
 import { EscortCard } from "@/components/escort/EscortCard";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
+
+const baseUrl = process.env.APP_URL || "https://escorta.example.com";
+
+export const metadata: Metadata = {
+  title: "Meet our companions | Escorta",
+  description:
+    "Browse verified companions. Filter by city, preferences, and arrange meetups, dinner dates, travel, and social connections.",
+  alternates: { canonical: `${baseUrl}/companions` },
+};
 
 export default async function CompanionsPage({
   searchParams,
@@ -106,6 +116,19 @@ export default async function CompanionsPage({
               />
             ))
           )}
+        </div>
+
+        <div className="mt-10 text-sm text-[var(--color-silver)] font-light">
+          <p>
+            Need inspiration for your next arrangement?{" "}
+            <Link
+              href="/gallery"
+              className="text-[var(--color-champagne)] hover:text-[var(--color-champagne-light)] underline underline-offset-4"
+            >
+              Visit our image gallery
+            </Link>
+            .
+          </p>
         </div>
       </div>
     </div>

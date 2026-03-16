@@ -94,6 +94,17 @@ function LoginContent() {
             {loading ? "Signing in..." : "Sign in"}
           </button>
         </form>
+        <div className="mt-4 flex items-center justify-between text-sm">
+          <Link
+            href="/request-password-reset"
+            className="text-[var(--color-silver)] hover:text-[var(--color-ivory)] transition underline underline-offset-4"
+          >
+            Forgot password?
+          </Link>
+          <span className="text-[var(--color-muted)] font-light text-xs">
+            Minimum 8 characters
+          </span>
+        </div>
         <p className="mt-8 text-[var(--color-silver)] font-light text-sm">
           No account?{" "}
           <Link
@@ -102,6 +113,27 @@ function LoginContent() {
           >
             Create one
           </Link>
+        </p>
+        <p className="mt-4 text-[var(--color-muted)] font-light text-[11px] leading-relaxed">
+          By continuing, you agree to our{" "}
+          <Link href="/terms" className="underline underline-offset-4 hover:text-[var(--color-ivory)]">
+            Terms of Service
+          </Link>
+          ,{" "}
+          <Link
+            href="/privacy"
+            className="underline underline-offset-4 hover:text-[var(--color-ivory)]"
+          >
+            Privacy Policy
+          </Link>{" "}
+          and{" "}
+          <Link
+            href="/guidelines"
+            className="underline underline-offset-4 hover:text-[var(--color-ivory)]"
+          >
+            Community Guidelines
+          </Link>
+          .
         </p>
       </div>
     </div>

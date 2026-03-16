@@ -26,6 +26,7 @@ model User {
   // Client preferences (for suggestions and matching)
   orientation      String?  // e.g. straight | gay | bisexual | other
   preferencesNotes String?  @map("preferences_notes")
+  preferredLanguages String[] @default([]) @map("preferred_languages") // e.g. ["en", "es"]
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
@@ -36,6 +37,7 @@ model User {
   sexterMessages        SexterMessage[]
   sexterSessionsAsClient SexterSession[] @relation("SexterClient")
   emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens   PasswordResetToken[]
   creditTransactions    CreditTransaction[] @relation("CreditTransactionsAsUser")
   creditTransactionsRelated CreditTransaction[] @relation("CreditTransactionsRelatedUser")
   liveViewers          LiveSessionViewer[]
@@ -43,6 +45,9 @@ model User {
   videoCallsAsClient   VideoCallSession[]
   videoCallRequestsAsClient VideoCallRequest[]
   notifications       Notification[]
+  sessionReports      SessionReport[]
+  blocksInitiated     UserBlock[] @relation("BlocksInitiated")
+  blocksReceived      UserBlock[] @relation("BlocksReceived")
 }
 
 model LiveSession {
@@ -84,8 +89,23 @@ model LiveSessionMessage {
   sender        User        @relation(fields: [senderId], references: [id], onDelete: Cascade)
   message       String      @db.Text
   createdAt     DateTime    @default(now()) @map("created_at")
+  deletedAt     DateTime?   @map("deleted_at") // moderation: hidden/deleted (companion or admin)
 
   @@index([liveSessionId])
+}
+
+model SessionReport {
+  id          String   @id @default(uuid())
+  reporterId  String   @map("reporter_id")
+  reporter    User     @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+  reportType  String   @map("report_type") // live_session | video_call | booking | sexter_session | user
+  referenceId String   @map("reference_id") // liveSessionId, videoCallSessionId, bookingId, sexterSessionId or userId
+  reason      String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([reporterId, reportType, referenceId])
+  @@index([reportType, referenceId])
+  @@index([reporterId])
 }
 
 model VideoCallRequest {
@@ -165,6 +185,20 @@ model EmailVerificationToken {
   @@index([userId])
 }
 
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  usedAt    DateTime? @map("used_at")
+
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
+}
+
 model EscortProfile {
   id               String   @id @default(uuid())
   userId           String   @unique @map("user_id")
@@ -180,6 +214,7 @@ model EscortProfile {
   isGenderVerified Boolean  @default(false) @map("is_gender_verified") // admin-verified gender
   isActive         Boolean  @default(true) @map("is_active")
   isPremium        Boolean  @default(false) @map("is_premium")
+  languages        String[] @default([]) // e.g. ["en", "es", "fr"]
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
@@ -219,6 +254,33 @@ model EscortVod {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([escortId])
+}
+
+model Gallery {
+  id          String        @id @default(uuid())
+  slug        String        @unique
+  title       String
+  h1          String
+  description String        @db.Text
+  keywords    String[]      @default([])
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  images      GalleryImage[]
+}
+
+model GalleryImage {
+  id            String   @id @default(uuid())
+  galleryId     String   @map("gallery_id")
+  gallery       Gallery  @relation(fields: [galleryId], references: [id], onDelete: Cascade)
+  src           String   @db.Text
+  alt           String   @db.Text
+  caption       String?  @db.Text
+  sortOrder     Int      @default(0) @map("sort_order")
+  escortPhotoId String?  @map("escort_photo_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([galleryId])
 }
 
 model Service {
@@ -270,6 +332,7 @@ model EscortPhoto {
   imageUrl   String   @map("image_url")
   isPrimary  Boolean  @default(false) @map("is_primary")
   isApproved Boolean  @default(false) @map("is_approved")
+  allowGallery Boolean @default(false) @map("allow_gallery")
   createdAt  DateTime @default(now()) @map("created_at")
 }
 
@@ -307,6 +370,7 @@ model Message {
   booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   sender    User     @relation(fields: [senderId], references: [id])
   createdAt DateTime @default(now()) @map("created_at")
+  deletedAt DateTime? @map("deleted_at")
 }
 
 // Session-based sexter: standalone from connections. clientId+escortId for new flow; bookingId legacy.
@@ -333,7 +397,8 @@ model SexterMessage {
   message         String        @default("")
   attachmentUrl   String?       @map("attachment_url")
   attachmentType  String?       @map("attachment_type") // "image" | "video"
-  createdAt       DateTime     @default(now()) @map("created_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  deletedAt       DateTime?     @map("deleted_at")
 }
 
 // Stores email of deleted accounts for company records; not exposed to clients.
@@ -344,4 +409,15 @@ model DeletedUserEmail {
   role      String?  @map("role")
   deletedAt DateTime @default(now()) @map("deleted_at")
   createdAt DateTime @default(now()) @map("created_at")
+}
+
+model UserBlock {
+  blockerId String @map("blocker_id")
+  blockedId String @map("blocked_id")
+  blocker   User   @relation("BlocksInitiated", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User   @relation("BlocksReceived", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
 }

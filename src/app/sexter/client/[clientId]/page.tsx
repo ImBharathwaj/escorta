@@ -14,6 +14,8 @@ type SexterMessage = {
   attachmentType?: string | null;
 };
 
+type SexterTip = { id: string; amount: number; clientName: string; createdAt: string };
+
 function mergeSexterMessages(prev: SexterMessage[], next: SexterMessage[]): SexterMessage[] {
   if (!next?.length) return prev;
   if (!prev?.length) return next;
@@ -23,12 +25,26 @@ function mergeSexterMessages(prev: SexterMessage[], next: SexterMessage[]): Sext
   return merged;
 }
 
+type ChatItem =
+  | { type: "message"; id: string; createdAt: string; message: SexterMessage }
+  | { type: "tip"; id: string; createdAt: string; amount: number; clientName: string };
+
+function mergeChatItems(messages: SexterMessage[], tips: SexterTip[]): ChatItem[] {
+  const items: ChatItem[] = [
+    ...messages.map((m) => ({ type: "message" as const, id: m.id, createdAt: m.createdAt, message: m })),
+    ...tips.map((t) => ({ type: "tip" as const, id: `tip-${t.id}`, createdAt: t.createdAt, amount: t.amount, clientName: t.clientName })),
+  ];
+  items.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  return items;
+}
+
 export default function SexterClientChatPage() {
   const params = useParams();
   const router = useRouter();
   const { user, token, authReady } = useAuth();
   const clientId = params.clientId as string;
   const [messages, setMessages] = useState<SexterMessage[]>([]);
+  const [tips, setTips] = useState<SexterTip[]>([]);
   const [otherName, setOtherName] = useState("");
   const [otherImageUrl, setOtherImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,6 +60,9 @@ export default function SexterClientChatPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const prevMessageCountRef = useRef(0);
+  const [reporting, setReporting] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [reportMessage, setReportMessage] = useState("");
 
   useEffect(() => {
     if (!authReady) return;
@@ -70,6 +89,7 @@ export default function SexterClientChatPage() {
         .then((data) => {
           const next = Array.isArray(data?.messages) ? data.messages : [];
           setMessages((prev) => mergeSexterMessages(prev, next));
+          if (Array.isArray(data?.tips)) setTips(data.tips);
           if (typeof data?.canSend === "boolean") setCanSend(data.canSend);
           setSexterSession(data?.session ?? null);
           setExpiresAt(data?.expiresAt ?? null);
@@ -81,15 +101,16 @@ export default function SexterClientChatPage() {
         .finally(() => setLoading(false));
     };
     fetchSexter();
-    const interval = setInterval(fetchSexter, 10000);
+    const interval = setInterval(fetchSexter, 3000);
     return () => clearInterval(interval);
   }, [token, clientId, user?.role]);
 
+  const chatItems = mergeChatItems(messages, tips);
   useEffect(() => {
     const prev = prevMessageCountRef.current;
-    prevMessageCountRef.current = messages.length;
-    if (messages.length > prev) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    prevMessageCountRef.current = chatItems.length;
+    if (chatItems.length > prev) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatItems.length]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -154,6 +175,7 @@ export default function SexterClientChatPage() {
       if (res.ok) {
         setSexterSession(null);
         setMessages([]);
+        setTips([]);
         setExpiresAt(null);
         setCanSend(false);
       }
@@ -181,29 +203,48 @@ export default function SexterClientChatPage() {
             </div>
             <div className="flex-1 min-w-0">
               <h1 className="text-lg font-light text-[var(--color-ivory)]">Sexter with {otherName || "..."}</h1>
-              <p className="text-xs text-[var(--color-silver)] mt-1">Sexter is separate from connection. Client uses credits; session content deleted when session ends.</p>
-              {expiresAt && isExpired && <p className="text-xs mt-1 text-[var(--color-muted)]">Session expired. Client can extend.</p>}
+              <p className="text-xs text-[var(--color-silver)] mt-1">
+                Sexter is separate from connection. Client uses credits; session content deleted when session ends.
+              </p>
+              {expiresAt && isExpired && (
+                <p className="text-xs mt-1 text-[var(--color-muted)]">Session expired. Client can extend.</p>
+              )}
+              <p className="text-[0.7rem] text-[var(--color-muted)] mt-1 max-w-md">
+                Safety tip: if a client sends abusive or illegal content, you can stop replying and report this Sexter
+                chat so our team can review.
+              </p>
             </div>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {loading && messages.length === 0 ? (
+            {loading && chatItems.length === 0 ? (
               <p className="text-[var(--color-silver)] font-light text-sm">Loading...</p>
-            ) : messages.length === 0 ? (
+            ) : chatItems.length === 0 ? (
               <p className="text-[var(--color-muted)] font-light text-sm">No active session. Client starts the session with credits.</p>
             ) : (
-              messages.map((m) => (
-                <div key={m.id} className={`flex ${m.sender.id === user?.id ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[80%] px-4 py-2 rounded-sm ${m.sender.id === user?.id ? "bg-[var(--color-champagne)]/20 border border-[var(--color-champagne)]/40 text-[var(--color-ivory)]" : "bg-[var(--color-slate)] border border-[var(--color-border)] text-[var(--color-pearl)]"}`}>
-                    {m.attachmentUrl && (m.attachmentType === "video" ? (
-                      <video src={m.attachmentUrl} controls className="max-w-full max-h-64 rounded object-contain mb-2 max-w-[280px]" draggable={false} onContextMenu={(e) => e.preventDefault()} />
-                    ) : (
-                      <img src={m.attachmentUrl} alt="" className="max-w-full max-h-64 rounded object-contain mb-2 max-w-[280px]" draggable={false} onContextMenu={(e) => e.preventDefault()} />
-                    ))}
-                    {m.message ? <p className="text-sm font-light whitespace-pre-wrap">{m.message}</p> : null}
-                    <p className="text-[10px] text-[var(--color-muted)] mt-1">{new Date(m.createdAt).toLocaleTimeString()}</p>
+              chatItems.map((item) =>
+                item.type === "tip" ? (
+                  <div key={item.id} className="flex justify-start">
+                    <div className="max-w-[85%] px-4 py-2 rounded-sm bg-[var(--color-champagne)]/15 border border-[var(--color-champagne)]/50 text-[var(--color-ivory)]">
+                      <p className="text-sm font-medium text-[var(--color-champagne)]">
+                        {item.clientName} tipped you {item.amount} credit{item.amount !== 1 ? "s" : ""}
+                      </p>
+                      <p className="text-[10px] text-[var(--color-silver)] mt-1">{new Date(item.createdAt).toLocaleTimeString()}</p>
+                    </div>
                   </div>
-                </div>
-              ))
+                ) : (
+                  <div key={item.id} className={`flex ${item.message.sender.id === user?.id ? "justify-end" : "justify-start"}`}>
+                    <div className={`max-w-[80%] px-4 py-2 rounded-sm ${item.message.sender.id === user?.id ? "bg-[var(--color-champagne)]/20 border border-[var(--color-champagne)]/40 text-[var(--color-ivory)]" : "bg-[var(--color-slate)] border border-[var(--color-border)] text-[var(--color-pearl)]"}`}>
+                      {item.message.attachmentUrl && (item.message.attachmentType === "video" ? (
+                        <video src={item.message.attachmentUrl} controls className="max-w-full max-h-64 rounded object-contain mb-2 max-w-[280px]" draggable={false} onContextMenu={(e) => e.preventDefault()} />
+                      ) : (
+                        <img src={item.message.attachmentUrl} alt="" className="max-w-full max-h-64 rounded object-contain mb-2 max-w-[280px]" draggable={false} onContextMenu={(e) => e.preventDefault()} />
+                      ))}
+                      {item.message.message ? <p className="text-sm font-light whitespace-pre-wrap">{item.message.message}</p> : null}
+                      <p className="text-[10px] text-[var(--color-muted)] mt-1">{new Date(item.message.createdAt).toLocaleTimeString()}</p>
+                    </div>
+                  </div>
+                )
+              )
             )}
             <div ref={bottomRef} />
           </div>
@@ -234,6 +275,65 @@ export default function SexterClientChatPage() {
                 <button type="submit" disabled={!canSend || sending || (!input.trim() && !attachmentFile)} className="px-6 py-3 text-sm tracking-widest uppercase border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)] hover:text-[var(--color-obsidian)] transition disabled:opacity-50 rounded-sm">Send</button>
               </div>
             </form>
+            <div className="mt-3 border-t border-[var(--color-border)] pt-2">
+              <details className="text-xs text-[var(--color-muted)]">
+                <summary className="cursor-pointer select-none text-[var(--color-silver)]">
+                  Report this Sexter chat
+                </summary>
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!token || reporting || !sexterSession) return;
+                    setReportMessage("");
+                    setReporting(true);
+                    try {
+                      const res = await fetch("/api/reports", {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                          Authorization: `Bearer ${token}`,
+                        },
+                        body: JSON.stringify({
+                          reportType: "sexter_session",
+                          referenceId: sexterSession.id,
+                          reason: reportReason.trim(),
+                        }),
+                      });
+                      if (res.ok) {
+                        setReportMessage("Thanks, your report has been submitted.");
+                        setReportReason("");
+                      } else {
+                        const data = await res.json().catch(() => ({}));
+                        setReportMessage(data.error || "Could not submit report. Please try again.");
+                      }
+                    } finally {
+                      setReporting(false);
+                    }
+                  }}
+                  className="mt-2 space-y-2"
+                >
+                  <textarea
+                    value={reportReason}
+                    onChange={(e) => setReportReason(e.target.value)}
+                    rows={2}
+                    className="w-full px-2 py-1 bg-[var(--color-obsidian)] border border-[var(--color-border)] rounded-sm text-[var(--color-ivory)] text-xs"
+                    placeholder="Optional: briefly describe what happened."
+                  />
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="submit"
+                      disabled={reporting}
+                      className="px-3 py-1 text-[0.7rem] tracking-widest uppercase border border-red-500/80 text-red-300 hover:bg-red-500/20 disabled:opacity-50 rounded-sm"
+                    >
+                      {reporting ? "Sending…" : "Report chat"}
+                    </button>
+                    {reportMessage && (
+                      <p className="text-[0.7rem] text-[var(--color-silver)] max-w-xs text-right">{reportMessage}</p>
+                    )}
+                  </div>
+                </form>
+              </details>
+            </div>
           </div>
         </div>
       </div>

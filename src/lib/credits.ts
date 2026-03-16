@@ -23,3 +23,7 @@ export const VIDEO_CALL_BLOCK_MINUTES = 2;
 
 /** Video call request expires if companion doesn't accept/decline within this many minutes. */
 export const VIDEO_CALL_REQUEST_EXPIRY_MINUTES = 3;
+
+/** Tips: min/max credits per tip (private chat, sexter, live, video call). */
+export const TIP_MIN_CREDITS = 1;
+export const TIP_MAX_CREDITS = 100;

@@ -63,8 +63,17 @@ export function NotificationBell() {
         setOpen(false);
       }
     };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+      }
+    };
     document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("click", close);
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, []);
 
   const markRead = async (id: string) => {
@@ -112,6 +121,12 @@ export function NotificationBell() {
     }
     if (n.type === "video_call_accepted" && n.referenceType === "video_call_session" && n.referenceId) {
       return `/video-call/${n.referenceId}`;
+    }
+    if (n.type === "tip" && n.referenceType && n.referenceId) {
+      if (n.referenceType === "booking") return `/connections/${n.referenceId}`;
+      if (n.referenceType === "video_call") return `/video-call/${n.referenceId}`;
+      if (n.referenceType === "live_session") return "/live/go";
+      if (n.referenceType === "sexter_session") return "/sexter";
     }
     return "/dashboard";
   };
@@ -171,7 +186,7 @@ export function NotificationBell() {
                       className={`block p-3 text-left hover:bg-[var(--color-obsidian)]/50 transition ${!n.readAt ? "bg-[var(--color-obsidian)]/20" : ""}`}
                     >
                       <p className="text-sm text-[var(--color-ivory)] font-light line-clamp-2">
-                        {n.title || (n.type === "live_started" ? "Someone is now live" : "New message")}
+                        {n.title || (n.type === "live_started" ? "Someone is now live" : n.type === "tip" ? "You received a tip" : "New message")}
                       </p>
                       <p className="text-xs text-[var(--color-silver)] mt-1">{formatTime(n.createdAt)}</p>
                     </Link>

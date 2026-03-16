@@ -11,12 +11,12 @@ This document outlines a plan to add **companion live streaming** (with client t
 | Item | Status | Notes |
 |------|--------|--------|
 | **Provider** | Done | LiveKit Cloud (free tier); tokens via `livekit-server-sdk` and `src/lib/livekit.ts`. |
-| **DB models** | Done | `LiveSession`, `LiveSessionViewer` (with `watchExpiresAt`), `LiveSessionMessage` in Prisma. `VideoCallSession` for 1-1. |
+| **DB models** | Done | `LiveSession`, `LiveSessionViewer` (with `watchExpiresAt`), `LiveSessionMessage` in Prisma. `VideoCallSession` for 1-1; `SessionReport` and soft-delete on `LiveSessionMessage` for moderation. |
 | **Credits** | Done | 1 credit to join (first 2 min included). Extend: 1 credit = +2 min. Companion earns on join and extend (`live_watch`, `live_earned`). |
-| **APIs** | Done | `POST /api/live/start`, `PATCH /api/live/[sessionId]/end`, `GET /api/live/sessions`, `GET /api/live/[sessionId]` (returns `viewerCount`), `POST /api/live/[sessionId]/join` (returns `watchExpiresAt`), `POST /api/live/[sessionId]/extend`, `POST /api/live/[sessionId]/leave`, `GET/POST /api/live/[sessionId]/messages`. |
-| **Companion UI** | Done | Header “Go live” → `/live/go`. Start live, LiveKit room (camera/mic or VOD), live chat (polling), viewer count (“X watching”), End live. **Premium:** upload VOD and stream as “live”. |
-| **Client UI** | Done | Header link “Live” → `/live`. List sessions (thumbnail, name, current viewer count). Join (1 credit) → watch 2 min then extend (1 credit = 2 min); countdown; "Live end" card when companion ends; live chat + Leave. |
-| **Chat** | Done | REST + polling (companion 5s, client 4s). Stored in `LiveSessionMessage`. |
+| **APIs** | Done | `POST /api/live/start`, `PATCH /api/live/[sessionId]/end`, `GET /api/live/sessions`, `GET /api/live/[sessionId]` (returns `viewerCount`), `POST /api/live/[sessionId]/join` (returns `watchExpiresAt`), `POST /api/live/[sessionId]/extend`, `POST /api/live/[sessionId]/leave`, `GET/POST /api/live/[sessionId]/messages`, `DELETE /api/live/[sessionId]/messages/[messageId]`, `POST /api/live/[sessionId]/report`, `GET /api/live/[sessionId]/tips`. |
+| **Companion UI** | Done | Header “Go live” → `/live/go`. Start live, LiveKit room (camera/mic or VOD), live chat (polling), viewer count (“X watching”), End live. **Premium:** upload VOD and stream as “live”. Companion can delete chat messages and sees tip toasts when clients tip during live. |
+| **Client UI** | Done | Header link “Live” → `/live`. List sessions (thumbnail, name, current viewer count). Join (1 credit) → watch 2 min then extend (1 credit = 2 min); countdown; "Live ended" card when companion ends; live chat + Leave. When watch time expires, video and chat pause with an overlay prompting to **extend watch time (1 credit = 2 min)**; chat input is disabled until extended or the user leaves. |
+| **Chat** | Done | REST + polling (companion 5s, client 4s). Stored in `LiveSessionMessage`. Deleted messages are hidden for viewers. |
 
 ### 1-1 video chat — implemented
 
@@ -24,9 +24,9 @@ This document outlines a plan to add **companion live streaming** (with client t
 |------|--------|--------|
 | **DB model** | Done | `VideoCallSession` (clientId, escortId, roomName, startedAt, endedAt, expiresAt, status). |
 | **Credits** | Done | `VIDEO_CALL_CREDITS_PER_BLOCK = 1`, `VIDEO_CALL_BLOCK_MINUTES = 2`; client charged when companion accepts and on extend; companion earns (`video_call`, `video_call_extend`, `video_call_earned`). |
-| **APIs** | Done | `POST /api/video-call/start` (client, body: escortId), `GET /api/video-call/active`, `GET /api/video-call/[sessionId]` (token + session), `POST /api/video-call/[sessionId]/extend` (client), `PATCH /api/video-call/[sessionId]/end` (either). |
-| **Client UI** | Done | “Video call (1 credit)” on escort profile (when connected) and “Video call” in connection chat; in-call page at `/video-call/[sessionId]` (remote + local video, timer, Extend, End). |
-| **Escort UI** | Done | Dashboard banner “Video call in progress with X – Join call” when active; “Join video call” on connection chat; same in-call page. |
+| **APIs** | Done | Request-based consensual flow: `POST /api/video-call/request`, `GET /api/video-call/requests`, `POST /api/video-call/request/[requestId]/accept`, `POST /api/video-call/request/[requestId]/decline`, `POST /api/video-call/request/[requestId]/cancel`; session APIs: `GET /api/video-call/active`, `GET /api/video-call/[sessionId]` (token + session), `GET /api/video-call/[sessionId]/status` (active/expired/ended), `POST /api/video-call/[sessionId]/extend` (client), `PATCH /api/video-call/[sessionId]/end` (either), `GET /api/video-call/[sessionId]/tips`. |
+| **Client UI** | Done | “Request video call” button in connection chat header when connected; client sees “Waiting for acceptance…” and can cancel. In-call page at `/video-call/[sessionId]` (remote + local video, timer, **Extend**, **End**, and a **Tip** button). When time expires, the video is blurred and an overlay prompts the client to **extend (+2 min, 1 credit)**; if they ignore it for 30 seconds, the call is ended for both. |
+| **Escort UI** | Done | Dashboard banner “Video call in progress with X – Join call” when active; “Join video call” on connection chat; in-call page mirrors the client’s view. Escort sees tip toasts during the call when the client tips. |
 
 ### Key files (live feature)
 
@@ -40,6 +40,16 @@ This document outlines a plan to add **companion live streaming** (with client t
 - **Backend:** `src/lib/credits.ts` (VIDEO_CALL_*), `src/lib/creditLedger.ts` (recordVideoCallAndEarn). API routes under `src/app/api/video-call/` (start, active, [sessionId], [sessionId]/extend, [sessionId]/end).
 - **Client:** `src/components/escort/ConnectForm.tsx` (ConnectActions with “Video call” when connected), `src/app/connections/[id]/page.tsx` (“Video call” in chat header), `src/app/video-call/[sessionId]/page.tsx` (in-call UI).
 - **Escort:** `src/app/dashboard/page.tsx` (active call banner + “Join call”), `src/app/connections/[id]/page.tsx` (“Join video call” when active call with that client), same in-call page.
+
+### Phase 4 (Polish) — in progress
+
+| Item | Status | Notes |
+|------|--------|--------|
+| **Moderation** | Done | Report live session: `POST /api/live/[sessionId]/report`; client/companion; admin list at `/admin/reports`. Delete live message: companion only (`DELETE /api/live/[sessionId]/messages/[messageId]`); GET excludes deleted. |
+| **Analytics** | Done | Companion: earnings by type on `/dashboard/credits`. Admin: `/admin/analytics` (credits, sessions, reports), `/admin/reports` (reported sessions). |
+| **Tips & UI polish** | Done | Generic `POST /api/tips` (contexts: booking, sexter_session, live_session, video_call) with min/max validation and atomic credit transfers plus ledger entries (`tip`, `tip_earned`). Tip button/modal added to: connection chat, sexter chat, live watch, and 1-1 video call. Success animations for tipping and for connection acceptance. Escorts see tip notifications (bell + in-context toasts for live, sexter, booking chat, and 1-1 calls). |
+| **Admin tools** | Done | `/api/admin/add-credits` + `/admin/credits` page allow admins to grant credits (type `admin_grant`) to any user for testing; credits history and earnings by type updated accordingly. |
+| **WebSocket chat** | Not started | Live, connection, and in-call chat still use REST + polling. |
 
 ### Setup and docs
 
@@ -214,8 +224,12 @@ Recommendation: start with **REST + polling** for live chat and in-call text to 
 | POST | `/api/live/[sessionId]/join` | Client: join (deduct 1 credit), return token + `watchExpiresAt` (first 2 min). Re-join (same viewer, not left) returns token + current `watchExpiresAt` without charging. |
 | POST | `/api/live/[sessionId]/extend` | Client: extend watch time (1 credit = +2 min); returns new `watchExpiresAt`. |
 | POST | `/api/live/[sessionId]/leave` | Client: leave, set `leftAt` on viewer record. |
-| GET | `/api/live/[sessionId]/messages` | Get live chat messages (paginated). |
+| GET | `/api/live/[sessionId]/messages` | Get live chat messages (paginated; excludes deleted). |
 | POST | `/api/live/[sessionId]/messages` | Send message (client or companion). |
+| DELETE | `/api/live/[sessionId]/messages/[messageId]` | Companion: hide/delete a message (soft delete). |
+| POST | `/api/live/[sessionId]/report` | Client or companion: report this session (optional reason); idempotent per user. |
+| GET | `/api/live/[sessionId]/tips` | Escort only: list tips earned in this live session (for live tip toasts). |
+| POST | `/api/tips` | Client only: generic tip endpoint (contexts: `booking`, `sexter_session`, `live_session`, `video_call`); validates amount, resolves escort, updates balances, records ledger, and creates a `tip` notification. |
 
 ### 5.2 1-1 Video Chat
 
@@ -230,6 +244,8 @@ Recommendation: start with **REST + polling** for live chat and in-call text to 
 | GET | `/api/video-call/[sessionId]` | Get session + join token for current user. |
 | POST | `/api/video-call/[sessionId]/extend` | Extend session; deduct credits again. |
 | PATCH | `/api/video-call/[sessionId]/end` | End session (either party). |
+| GET | `/api/video-call/[sessionId]/status` | Lightweight status check: `active`, `expired` (time up, waiting for client to extend), or `ended`. Used to control client blur/extend overlay and escort disconnect. |
+| GET | `/api/video-call/[sessionId]/tips` | Escort only: list tips earned during this video call (for in-call tip toasts). |
 | GET | `/api/video-call/[sessionId]/messages` | Optional in-call text. |
 | POST | `/api/video-call/[sessionId]/messages` | Send in-call message. |
 
@@ -255,6 +271,7 @@ Token endpoint can be separate, e.g. `POST /api/video-call/[sessionId]/token` re
   - Companion: “Video call” from connection list or chat.
 - **In-call UI**
   - Full-screen or large video area; remote party; local preview (optional); timer; “Extend” and “End call” buttons; optional text chat drawer.
+  - When the **paid block expires**, the **client** sees the escort video blurred with an overlay prompting them to extend (+2 min, 1 credit) or end; if they do nothing for 30 seconds, the call is automatically ended for both. The **escort** stays in the call UI until the call is explicitly ended or auto-ended.
 
 ---
 
@@ -280,11 +297,11 @@ Token endpoint can be separate, e.g. `POST /api/video-call/[sessionId]/token` re
 - Credits: deduct when companion **accepts** request and on extend (1 credit = 2 min); companion earn (`video_call`, `video_call_extend`, `video_call_earned`).
 - Client and companion UI: **consensual flow** — client requests from profile/chat; companion sees request and accepts/declines; in-call view (video + timer + extend + end), optional text.
 
-### Phase 4 — Polish — not started
+### Phase 4 — Polish — in progress
 
-- Replace polling with WebSocket or provider data channel for chat where needed.
-- Moderation: hide/delete live or in-call messages; report session.
-- Analytics: duration, revenue per session; show in companion “Credits earned” and admin.
+- **WebSocket/real-time chat:** Not started; polling remains. Can add WebSocket or LiveKit data channel later.
+- **Moderation (done):** Companion can hide/delete any message in live chat (`DELETE /api/live/[sessionId]/messages/[messageId]`); GET messages exclude deleted. Report session: client or companion can report (`POST /api/live/[sessionId]/report`); admin sees at `/admin/reports`.
+- **Analytics (done):** Companion Credits earned page shows earnings by type. Admin `/admin/analytics`: platform credits, session counts, reports; `/admin/reports` lists reported sessions.
 
 ---
 
@@ -325,6 +342,6 @@ Ledger types in `src/lib/creditLedger.ts`: `live_watch`, `live_earned`, `video_c
 - **Live video (implemented):** Companion streams via LiveKit; clients join (1 credit, first 2 min), extend (1 credit = 2 min), watch and text in a shared chat; companion earns on join and extend. **Viewer count** (current watchers only) shown to companion and client. When companion **ends live**, clients see a **"Live ended"** card and "Back to live". Pages: `/live/go` (companion), `/live` (client). APIs and DB as in section 5.1 and 2.3.
 - **1-1 video (implemented):** Private call; time-based credits (1 credit = 2 min) and extend; consensual request flow. Client requests from profile or chat; escort accepts/declines; shared in-call page with LiveKit.
 - **Tech:** LiveKit Cloud for live and 1-1 (WebRTC); backend issues tokens, stores sessions; credits and ledger integrated.
-- **Phasing:** Phase 1, 2, and 3 done; Phase 4 (polish) remains.
+- **Phasing:** Phase 1, 2, and 3 done; Phase 4 (polish) — moderation and analytics done; WebSocket for chat deferred.
 
 See **Implementation status** at the top of this document for a quick checklist of what is done and what is not.
