@@ -27,7 +27,13 @@ export function SignupPromoPopup() {
       setShow(false);
       return;
     }
-    const t = setTimeout(() => setShow(true), 800);
+    const t = setTimeout(() => {
+      // Only show if age gate has been passed and user is still not logged in
+      const ageVerified = localStorage.getItem("escorta_age_verified");
+      if (!user && ageVerified === "true") {
+        setShow(true);
+      }
+    }, 10000);
     return () => clearTimeout(t);
   }, [mounted, user]);
 

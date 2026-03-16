@@ -1,29 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
 import { SEXTER_SESSION_CREDITS, SEXTER_SESSION_MINUTES } from "@/lib/credits";
 import { recordClientSpendAndCompanionEarn } from "@/lib/creditLedger";
 import { uploadSexterMedia, getSignedImageUrl } from "@/lib/minio";
-
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
-
-function getUser(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return null;
-  try {
-    return jwt.verify(auth.slice(7), JWT_SECRET) as { userId: string; role: string };
-  } catch {
-    return null;
-  }
-}
+import { requireAuth } from "@/lib/auth";
 
 /** GET: Client only. Most recent sexter session + messages. Post-session teaser from escort is returned with blurredForClient: true so client shows it blurred as bait. */
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ escortId: string }> }
 ) {
-  const payload = getUser(req);
-  if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const payload = requireAuth(req);
+  if (payload instanceof NextResponse) return payload;
   if (payload.role !== "client") return NextResponse.json({ error: "Clients only" }, { status: 403 });
 
   const { escortId } = await params;
@@ -37,6 +25,7 @@ export async function GET(
     orderBy: { createdAt: "desc" },
     include: {
       messages: {
+        where: { deletedAt: null },
         orderBy: { createdAt: "asc" },
         include: { sender: { select: { id: true, role: true } } },
       },
@@ -110,8 +99,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ escortId: string }> }
 ) {
-  const payload = getUser(req);
-  if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const payload = requireAuth(req);
+  if (payload instanceof NextResponse) return payload;
   if (payload.role !== "client") return NextResponse.json({ error: "Clients only" }, { status: 403 });
 
   const { escortId } = await params;
@@ -119,6 +108,19 @@ export async function POST(
     where: { id: escortId, isActive: true },
   });
   if (!escort) return NextResponse.json({ error: "Companion not found" }, { status: 404 });
+
+  // Block checks for client-initiated sexter.
+  const blocked = await prisma.userBlock.findFirst({
+    where: {
+      OR: [
+        { blockerId: payload.userId, blockedId: escort.userId },
+        { blockerId: escort.userId, blockedId: payload.userId },
+      ],
+    },
+  });
+  if (blocked) {
+    return NextResponse.json({ error: "Messaging is disabled between you and this user." }, { status: 403 });
+  }
 
   const clientId = payload.userId;
   let session = await prisma.sexterSession.findFirst({

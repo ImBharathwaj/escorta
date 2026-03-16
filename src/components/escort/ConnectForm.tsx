@@ -5,6 +5,137 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { CONNECT_CREDITS } from "@/lib/credits";
+import { VIDEO_CALL_CREDITS_PER_BLOCK } from "@/lib/credits";
+
+function ConnectActions({
+  escortId,
+  escortName,
+  connectionId,
+}: {
+  escortId: string;
+  escortName: string;
+  connectionId: string;
+}) {
+  const router = useRouter();
+  const { token, refreshUser } = useAuth();
+  const [videoCallLoading, setVideoCallLoading] = useState(false);
+  const [videoCallError, setVideoCallError] = useState("");
+  const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
+
+  const checkPendingAndActive = useCallback(async () => {
+    if (!token || !escortId) return;
+    const [reqRes, activeRes] = await Promise.all([
+      fetch(`/api/video-call/requests?escortId=${encodeURIComponent(escortId)}`, { headers: { Authorization: `Bearer ${token}` } }),
+      fetch("/api/video-call/active", { headers: { Authorization: `Bearer ${token}` } }),
+    ]);
+    const reqData = await reqRes.json().catch(() => ({}));
+    const activeData = await activeRes.json().catch(() => ({}));
+    const requests = reqData.requests ?? [];
+    const pending = requests.find((r: { status: string }) => r.status === "pending");
+    if (pending) setPendingRequestId(pending.id);
+    else setPendingRequestId(null);
+    if (activeData.session?.id) {
+      router.push(`/video-call/${activeData.session.id}`);
+    }
+  }, [token, escortId, router]);
+
+  useEffect(() => {
+    if (!pendingRequestId) return;
+    const t = setInterval(checkPendingAndActive, 3000);
+    return () => clearInterval(t);
+  }, [pendingRequestId, checkPendingAndActive]);
+
+  useEffect(() => {
+    if (!token || !escortId) return;
+    checkPendingAndActive();
+  }, [token, escortId, checkPendingAndActive]);
+
+  async function requestVideoCall() {
+    if (!token) return;
+    setVideoCallError("");
+    setVideoCallLoading(true);
+    try {
+      const res = await fetch("/api/video-call/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ escortId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (data.code === "NEED_CREDITS") {
+          setVideoCallError(`You need ${data.required ?? VIDEO_CALL_CREDITS_PER_BLOCK} credit(s). Credits are only used when ${escortName} accepts.`);
+        } else {
+          setVideoCallError(data.error || "Failed to send request");
+        }
+        return;
+      }
+      if (data.requestId) setPendingRequestId(data.requestId);
+    } finally {
+      setVideoCallLoading(false);
+    }
+  }
+
+  async function cancelRequest() {
+    if (!token || !pendingRequestId) return;
+    setVideoCallLoading(true);
+    try {
+      await fetch(`/api/video-call/request/${pendingRequestId}/cancel`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setPendingRequestId(null);
+    } finally {
+      setVideoCallLoading(false);
+    }
+  }
+
+  return (
+    <div className="sticky top-24 space-y-3">
+      <Link
+        href={`/connections/${connectionId}`}
+        className="block border border-[var(--color-champagne)] bg-[var(--color-champagne)]/10 p-6 rounded-sm text-center text-[var(--color-ivory)] font-light hover:bg-[var(--color-champagne)]/20 hover:border-[var(--color-champagne)]/60 transition"
+      >
+        <span className="text-sm tracking-widest uppercase text-[var(--color-champagne)] block mb-1">
+          Connected
+        </span>
+        <span className="text-lg">
+          Continue chatting with {escortName}
+        </span>
+      </Link>
+      <div className="flex flex-col gap-2">
+        {videoCallError && (
+          <p className="text-sm text-amber-200/90 border border-amber-500/30 bg-amber-500/10 rounded-sm p-2">
+            {videoCallError}
+          </p>
+        )}
+        {pendingRequestId ? (
+          <div className="border border-[var(--color-silver)]/40 bg-[var(--color-charcoal)] p-4 rounded-sm space-y-2">
+            <p className="text-sm text-[var(--color-ivory)] font-light">
+              Waiting for {escortName} to accept… (1 credit when they accept)
+            </p>
+            <button
+              type="button"
+              onClick={cancelRequest}
+              disabled={videoCallLoading}
+              className="w-full py-2 text-sm border border-[var(--color-border)] text-[var(--color-silver)] hover:bg-[var(--color-obsidian)] disabled:opacity-50 rounded-sm"
+            >
+              Cancel request
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={requestVideoCall}
+            disabled={videoCallLoading}
+            className="w-full py-3 text-sm tracking-widest uppercase border border-[var(--color-border)] text-[var(--color-ivory)] hover:bg-[var(--color-charcoal)] hover:border-[var(--color-silver)] transition disabled:opacity-50 rounded-sm"
+          >
+            {videoCallLoading ? "Sending…" : "Request video call (1 credit when accepted)"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function ConnectForm({
   escortId,
@@ -172,17 +303,11 @@ export default function ConnectForm({
 
   if (existingConnection?.status === "accepted") {
     return (
-      <Link
-        href={`/connections/${existingConnection.id}`}
-        className="sticky top-24 block border border-[var(--color-champagne)] bg-[var(--color-champagne)]/10 p-6 rounded-sm text-center text-[var(--color-ivory)] font-light hover:bg-[var(--color-champagne)]/20 hover:border-[var(--color-champagne)]/60 transition"
-      >
-        <span className="text-sm tracking-widest uppercase text-[var(--color-champagne)] block mb-1">
-          Connected
-        </span>
-        <span className="text-lg">
-          Continue chatting with {escortName}
-        </span>
-      </Link>
+      <ConnectActions
+        escortId={escortId}
+        escortName={escortName}
+        connectionId={existingConnection.id}
+      />
     );
   }
 

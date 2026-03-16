@@ -27,7 +27,13 @@ async function getEscortAndPhoto(escortId: string, photoId: string) {
   return { escort, photo };
 }
 
-/** Set this photo as the primary image. */
+/**
+ * Update photo settings.
+ *
+ * - If called with JSON body `{ allow_gallery: boolean }`, toggles whether this photo
+ *   can be used in public galleries/SEO.
+ * - Otherwise (legacy call with no JSON body), sets this photo as primary.
+ */
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; photoId: string }> }
@@ -47,6 +53,27 @@ export async function PATCH(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const contentType = req.headers.get("content-type") || "";
+
+  if (contentType.startsWith("application/json")) {
+    const body = await req.json().catch(() => ({} as any));
+    const hasAllowGallery = Object.prototype.hasOwnProperty.call(body, "allow_gallery");
+
+    if (!hasAllowGallery) {
+      return NextResponse.json({ error: "No updatable fields" }, { status: 400 });
+    }
+
+    const updated = await prisma.escortPhoto.update({
+      where: { id: photoId },
+      data: {
+        allowGallery: !!body.allow_gallery,
+      },
+    });
+
+    return NextResponse.json(updated);
+  }
+
+  // Legacy behaviour: set as primary image
   await prisma.$transaction([
     prisma.escortPhoto.updateMany({
       where: { escortId },

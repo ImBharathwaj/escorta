@@ -44,7 +44,7 @@ type EscortProfile = {
   country: string | null;
   description: string | null;
   pricePerHour: number | null;
-  photos: { id: string; imageUrl: string; isPrimary: boolean }[];
+  photos: { id: string; imageUrl: string; isPrimary: boolean; allowGallery?: boolean }[];
 };
 
 type UserProfile = {
@@ -57,6 +57,7 @@ type UserProfile = {
   orientation?: string | null;
   preferencesNotes?: string | null;
   preferredServices?: string[];
+  preferredLanguages?: string[];
 };
 
 const ORIENTATION_OPTIONS = [
@@ -87,6 +88,7 @@ export default function ProfilePage() {
   const [services, setServices] = useState("");
   const [selectedAdultServices, setSelectedAdultServices] = useState<string[]>([]);
   const [customServiceInput, setCustomServiceInput] = useState("");
+  const [escortLanguagesInput, setEscortLanguagesInput] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -94,6 +96,7 @@ export default function ProfilePage() {
   const [preferencesNotes, setPreferencesNotes] = useState("");
   const [selectedPreferredServices, setSelectedPreferredServices] = useState<string[]>([]);
   const [customPreferredInput, setCustomPreferredInput] = useState("");
+  const [preferredLanguagesInput, setPreferredLanguagesInput] = useState("");
 
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoUploadProgress, setPhotoUploadProgress] = useState<string | null>(null);
@@ -143,6 +146,9 @@ export default function ProfilePage() {
         setOrientation(data.orientation || "");
         setPreferencesNotes(data.preferencesNotes || "");
         setSelectedPreferredServices(Array.isArray(data.preferredServices) ? data.preferredServices : []);
+        if (Array.isArray(data.preferredLanguages)) {
+          setPreferredLanguagesInput(data.preferredLanguages.join(", "));
+        }
         return data;
       }
     } catch {
@@ -170,6 +176,9 @@ export default function ProfilePage() {
         setDescription(data.description || "");
         setServices(Array.isArray(data.services) ? data.services.join(", ") : "");
         setSelectedAdultServices(Array.isArray(data.adultServices) ? data.adultServices : []);
+          if (Array.isArray(data.languages)) {
+            setEscortLanguagesInput(data.languages.join(", "));
+          }
       }
     } catch {
       setProfile(null);
@@ -197,6 +206,12 @@ export default function ProfilePage() {
           orientation: orientation.trim() || undefined,
           preferences_notes: preferencesNotes.trim() || undefined,
           preferred_services: selectedPreferredServices,
+          preferred_languages: preferredLanguagesInput
+            ? preferredLanguagesInput
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : [],
         }),
       });
       if (!res.ok) {
@@ -263,6 +278,12 @@ export default function ProfilePage() {
             description: description || undefined,
             services: servicesList,
             adult_services: selectedAdultServices,
+            languages: escortLanguagesInput
+              ? escortLanguagesInput
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+              : [],
           }
         : {
             alias_name: aliasName || undefined,
@@ -273,6 +294,12 @@ export default function ProfilePage() {
             description: description || undefined,
             services: servicesList,
             adult_services: selectedAdultServices,
+            languages: escortLanguagesInput
+              ? escortLanguagesInput
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+              : [],
           };
 
       const res = await fetch(url, {
@@ -298,7 +325,7 @@ export default function ProfilePage() {
   }
 
   async function handleDeleteAccount() {
-    if (!token || user?.role !== "client") return;
+    if (!token || (user?.role !== "client" && user?.role !== "escort")) return;
     setDeleteError("");
     setDeleting(true);
     try {
@@ -537,6 +564,21 @@ export default function ProfilePage() {
                   </div>
                   <div>
                     <label className="block text-xs tracking-[0.15em] uppercase text-[var(--color-silver)] mb-2 font-normal">
+                      Languages I&apos;m comfortable with
+                    </label>
+                    <p className="text-xs text-[var(--color-muted)] mb-3">
+                      Optional. Comma-separated list of language codes or names (e.g. <code className="text-[var(--color-pearl)]">en, es, fr</code>). We use this to match you with companions who speak your language.
+                    </p>
+                    <input
+                      type="text"
+                      value={preferredLanguagesInput}
+                      onChange={(e) => setPreferredLanguagesInput(e.target.value)}
+                      placeholder="e.g. en, es, fr"
+                      className={inputStyles}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs tracking-[0.15em] uppercase text-[var(--color-silver)] mb-2 font-normal">
                       Services I&apos;m interested in
                     </label>
                     <p className="text-xs text-[var(--color-muted)] mb-3">
@@ -661,38 +703,86 @@ export default function ProfilePage() {
           <>
             {profile && (
               <div className="mb-12 pb-12 border-b border-[var(--color-border)]">
-                <h2 className="text-sm tracking-[0.2em] uppercase text-[var(--color-silver)] mb-4 font-normal">
+                <h2 className="text-sm tracking-[0.2em] uppercase text-[var(--color-silver)] mb-2 font-normal">
                   Photos
                 </h2>
-                <p className="text-xs text-[var(--color-muted)] mb-4">
+                <p className="text-xs text-[var(--color-muted)] mb-1">
                   Click &quot;Set as primary&quot; to choose the main profile image. You can delete any photo.
                 </p>
-                <div className="flex flex-wrap gap-4">
+                <p className="text-[10px] text-[var(--color-muted)] mb-4">
+                  Use &quot;Allow for gallery &amp; SEO&quot; to mark which photos can appear in public image galleries and SEO content.
+                </p>
+                <div className="flex flex-wrap gap-6">
                   {(profile.photos ?? []).map((p) => (
-                    <div key={p.id} className="relative group" onContextMenu={(e) => e.preventDefault()}>
+                    <div
+                      key={p.id}
+                      className="w-44"
+                      onContextMenu={(e) => e.preventDefault()}
+                    >
                       <img
                         src={p.imageUrl}
                         alt=""
-                        className="w-24 h-24 object-cover border border-[var(--color-border)]"
+                        className="w-44 h-44 object-cover border border-[var(--color-border)]"
                         draggable={false}
                         onContextMenu={(e) => e.preventDefault()}
                       />
-                      {p.isPrimary && (
-                        <span className="absolute bottom-1 left-1 text-[10px] px-1.5 py-0.5 bg-[var(--color-champagne)] text-[var(--color-obsidian)]">
-                          Primary
-                        </span>
-                      )}
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex flex-col items-center justify-center gap-1 p-1">
-                        {!p.isPrimary && (
-                          <button
-                            type="button"
-                            onClick={() => handleSetPrimary(p.id)}
-                            disabled={!!photoSettingPrimaryId || !!photoDeletingId}
-                            className="w-full py-1.5 text-[10px] tracking-wider uppercase border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)] hover:text-[var(--color-obsidian)] transition disabled:opacity-50"
-                          >
-                            {photoSettingPrimaryId === p.id ? "…" : "Set as primary"}
-                          </button>
+                      <div className="mt-2 space-y-1">
+                        {p.isPrimary && (
+                          <div className="inline-block text-[10px] px-1.5 py-0.5 bg-[var(--color-champagne)] text-[var(--color-obsidian)]">
+                            Primary photo
+                          </div>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => !p.isPrimary && handleSetPrimary(p.id)}
+                          disabled={!!photoSettingPrimaryId || !!photoDeletingId || p.isPrimary}
+                          className="w-full py-1.5 text-[10px] tracking-wider uppercase border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)] hover:text-[var(--color-obsidian)] transition disabled:opacity-50"
+                        >
+                          {p.isPrimary
+                            ? "Primary"
+                            : photoSettingPrimaryId === p.id
+                            ? "…"
+                            : "Set as primary"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!profile || !token) return;
+                            setPhotoError("");
+                            try {
+                              const res = await fetch(
+                                `/api/escorts/${profile.id}/photos/${p.id}`,
+                                {
+                                  method: "PATCH",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                    Authorization: `Bearer ${token}`,
+                                  },
+                                  body: JSON.stringify({
+                                    allow_gallery: !p.allowGallery,
+                                  }),
+                                }
+                              );
+                              if (!res.ok) {
+                                const data = await res.json().catch(() => ({}));
+                                throw new Error(
+                                  data.error || "Failed to update gallery setting"
+                                );
+                              }
+                              await fetchEscortProfile();
+                            } catch (err) {
+                              setPhotoError(
+                                err instanceof Error
+                                  ? err.message
+                                  : "Failed to update gallery setting"
+                              );
+                            }
+                          }}
+                          disabled={!!photoDeletingId || !!photoSettingPrimaryId}
+                          className="w-full py-1.5 text-[10px] tracking-wider uppercase border border-[var(--color-champagne)]/60 text-[var(--color-champagne)] hover:bg-[var(--color-champagne)]/15 transition disabled:opacity-50"
+                        >
+                          {p.allowGallery ? "Allowed for gallery" : "Allow for gallery"}
+                        </button>
                         {photoDeleteConfirmId === p.id ? (
                           <div className="flex gap-1 w-full">
                             <button
@@ -835,6 +925,21 @@ export default function ProfilePage() {
               </div>
               <div>
                 <label className="block text-xs tracking-[0.15em] uppercase text-[var(--color-silver)] mb-2 font-normal">
+                  Languages you speak
+                </label>
+                <p className="text-xs text-[var(--color-muted)] mb-3">
+                  Comma-separated list of languages (e.g. <code className="text-[var(--color-pearl)]">en, es, fr</code>). We use this to match you with clients who prefer these languages.
+                </p>
+                <input
+                  type="text"
+                  value={escortLanguagesInput}
+                  onChange={(e) => setEscortLanguagesInput(e.target.value)}
+                  placeholder="e.g. en, es, fr"
+                  className={inputStyles}
+                />
+              </div>
+              <div>
+                <label className="block text-xs tracking-[0.15em] uppercase text-[var(--color-silver)] mb-2 font-normal">
                   Meetup types (comma-separated)
                 </label>
                 <input
@@ -937,6 +1042,23 @@ export default function ProfilePage() {
                 {saving ? "Saving..." : profile ? "Save changes" : "Create profile"}
               </button>
             </form>
+
+            <div className="mt-16 pt-12 border-t border-[var(--color-border)]">
+              <h2 className="text-sm font-light text-[var(--color-silver)] mb-1">Delete account</h2>
+              <p className="text-xs text-[var(--color-muted)] mb-3">
+                Permanently delete your account. You will not be able to sign in again. Your email may be retained for our records.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteError("");
+                  setShowDeleteConfirm(true);
+                }}
+                className="text-sm tracking-widest uppercase text-red-300 hover:text-red-200 transition"
+              >
+                Delete my account
+              </button>
+            </div>
           </>
         )}
 

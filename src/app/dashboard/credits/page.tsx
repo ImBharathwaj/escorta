@@ -15,9 +15,20 @@ type Transaction = {
   createdAt: string;
 };
 
+const EARNED_TYPE_LABELS: Record<string, string> = {
+  live_earned: "Live stream",
+  video_call_earned: "Video call",
+  video_call_extend: "Video call (extended)",
+  sexter_earned: "Sexter session",
+  connect_earned: "Connection request",
+  tip_earned: "Tip",
+  admin_grant: "Admin grant",
+};
+
 type HistoryResponse = {
   transactions: Transaction[];
   summary: { spent: number; earned: number };
+  summaryByType?: Record<string, number>;
 };
 
 function formatDate(s: string) {
@@ -88,9 +99,23 @@ export default function CreditsPage() {
                   Total credits spent: <span className="text-[var(--color-champagne)]">{data.summary.spent}</span>
                 </p>
               ) : (
-                <p className="text-[var(--color-ivory)] font-light">
-                  Total credits earned: <span className="text-[var(--color-champagne)]">{data.summary.earned}</span>
-                </p>
+                <>
+                  <p className="text-[var(--color-ivory)] font-light">
+                    Total credits earned: <span className="text-[var(--color-champagne)]">{data.summary.earned}</span>
+                  </p>
+                  {data.summaryByType && Object.keys(data.summaryByType).length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-[var(--color-border)]">
+                      <p className="text-xs text-[var(--color-silver)] mb-2">Earnings by type</p>
+                      <ul className="space-y-1 text-sm text-[var(--color-ivory)]">
+                        {Object.entries(data.summaryByType).map(([type, amount]) => (
+                          <li key={type}>
+                            {EARNED_TYPE_LABELS[type] ?? type}: <span className="text-[var(--color-champagne)]">{amount}</span> credits
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 

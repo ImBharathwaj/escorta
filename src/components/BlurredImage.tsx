@@ -9,9 +9,11 @@ type Props = {
   alt: string;
   className?: string;
   aspect?: "card" | "detail" | "thumbnail";
+  /** When true, show the image without "Premium content / Unlock to view" (e.g. on companion list cards). */
+  skipPremiumOverlay?: boolean;
 };
 
-export function BlurredImage({ photoId, alt, className = "", aspect = "card" }: Props) {
+export function BlurredImage({ photoId, alt, className = "", aspect = "card", skipPremiumOverlay = false }: Props) {
   const router = useRouter();
   const { user, token } = useAuth();
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
@@ -106,7 +108,7 @@ export function BlurredImage({ photoId, alt, className = "", aspect = "card" }: 
     style: { userSelect: "none", WebkitUserSelect: "none" } as React.CSSProperties,
   };
 
-  const showFull = isPremium || isFullImage;
+  const showFull = isPremium || isFullImage || skipPremiumOverlay;
   if (showFull && blobUrl) {
     return (
       <div

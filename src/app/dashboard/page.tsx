@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import type { ReadonlyURLSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { BlurredImage } from "@/components/BlurredImage";
 
@@ -23,14 +24,20 @@ type Booking = {
   escort?: { id: string; aliasName: string; primaryPhotoId?: string | null };
 };
 
-function DashboardContent() {
+function DashboardContent({ searchParams }: { searchParams: ReadonlyURLSearchParams }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const { user, token, logout, authReady } = useAuth();
+  const { user, token, logout, authReady, refreshUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [responding, setResponding] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  const [activeVideoCall, setActiveVideoCall] = useState<{ id: string; other: { name: string } } | null>(null);
+  const [premiumRequest, setPremiumRequest] = useState<{
+    isPremium: boolean;
+    request: { id: string; status: string; message: string | null; adminNotes?: string | null; createdAt: string; reviewedAt?: string | null } | null;
+  } | null>(null);
+  const [premiumSubmitting, setPremiumSubmitting] = useState(false);
+  const [premiumMessage, setPremiumMessage] = useState("");
 
   useEffect(() => {
     if (!authReady) return;
@@ -40,6 +47,14 @@ function DashboardContent() {
     }
     setLoading(false);
   }, [token, authReady, router]);
+
+  // Refresh user (and credits) once when client opens dashboard so balance is up to date
+  const refreshedRef = useRef(false);
+  useEffect(() => {
+    if (!token || user?.role !== "client" || refreshedRef.current) return;
+    refreshedRef.current = true;
+    refreshUser();
+  }, [token, user?.role, refreshUser]);
 
   const fetchBookings = useCallback(() => {
     if (!token) return;
@@ -70,6 +85,31 @@ function DashboardContent() {
     const id = setInterval(fetchBookings, 4000);
     return () => clearInterval(id);
   }, [token, user?.role, fetchBookings]);
+
+  const fetchPremiumRequest = useCallback(() => {
+    if (!token || user?.role !== "escort") return;
+    fetch("/api/escorts/me/premium-request", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((d) => setPremiumRequest({ isPremium: !!d.isPremium, request: d.request ?? null }))
+      .catch(() => setPremiumRequest({ isPremium: false, request: null }));
+  }, [token, user?.role]);
+  useEffect(() => {
+    if (user?.role === "escort") fetchPremiumRequest();
+  }, [user?.role, fetchPremiumRequest]);
+
+  // Fetch active video call (escort: join when client starts; client: rejoin if they left the page)
+  const fetchActiveVideoCall = useCallback(() => {
+    if (!token) return;
+    fetch("/api/video-call/active", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((data) => setActiveVideoCall(data.session ?? null))
+      .catch(() => setActiveVideoCall(null));
+  }, [token]);
+  useEffect(() => {
+    fetchActiveVideoCall();
+    const id = setInterval(fetchActiveVideoCall, 5000);
+    return () => clearInterval(id);
+  }, [fetchActiveVideoCall]);
 
   const respond = async (bookingId: string, status: "accepted" | "rejected") => {
     if (!token) return;
@@ -151,6 +191,95 @@ function DashboardContent() {
         {(booked || searchParams.get("connected") === "1") && (
           <div className="mb-10 p-5 border border-[var(--color-champagne)]/30 bg-[var(--color-champagne)]/5 text-[var(--color-champagne)] text-sm font-light">
             Your connection request has been sent. The companion will respond when they can.
+          </div>
+        )}
+
+        {activeVideoCall && (
+          <div className="mb-10 p-5 border border-green-500/50 bg-green-500/10 rounded-sm">
+            <p className="text-green-200 text-sm font-light mb-2">
+              Video call in progress with {activeVideoCall.other.name}.
+            </p>
+            <Link
+              href={`/video-call/${activeVideoCall.id}`}
+              className="inline-block px-4 py-2 text-sm tracking-widest uppercase border border-green-400 text-green-200 hover:bg-green-500/20 transition"
+            >
+              {user?.role === "escort" ? "Join call" : "Rejoin call"}
+            </Link>
+          </div>
+        )}
+
+        {user?.role === "escort" && (
+          <div className="mb-10 p-6 border border-[var(--color-border)] bg-[var(--color-charcoal)]">
+            <h2 className="text-lg font-light text-[var(--color-ivory)] tracking-wide mb-1">Premium</h2>
+            <p className="text-sm text-[var(--color-silver)] font-light mb-4">
+              Premium companions can upload a video to use as their live stream (shown as live to clients).
+            </p>
+            {premiumRequest === null ? (
+              <p className="text-sm text-[var(--color-muted)]">Loading…</p>
+            ) : premiumRequest.isPremium ? (
+              <p className="text-sm text-[var(--color-champagne)]">You&apos;re a premium companion. Use the Go live page to stream with camera or an uploaded video.</p>
+            ) : premiumRequest.request?.status === "pending" ? (
+              <p className="text-sm text-[var(--color-silver)]">Your premium request is pending. An admin will review it soon.</p>
+            ) : premiumRequest.request?.status === "rejected" ? (
+              <div className="space-y-2">
+                <p className="text-sm text-[var(--color-silver)]">Your request was declined.</p>
+                {premiumRequest.request.adminNotes && (
+                  <p className="text-xs text-[var(--color-muted)] italic">Note: {premiumRequest.request.adminNotes}</p>
+                )}
+                <button
+                  type="button"
+                  disabled={premiumSubmitting}
+                  onClick={async () => {
+                    if (!token) return;
+                    setPremiumSubmitting(true);
+                    try {
+                      const res = await fetch("/api/escorts/me/premium-request", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ message: premiumMessage || undefined }),
+                      });
+                      if (res.ok) fetchPremiumRequest();
+                    } finally {
+                      setPremiumSubmitting(false);
+                    }
+                  }}
+                  className="px-4 py-2 text-sm border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)]/10 disabled:opacity-50"
+                >
+                  Request again
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <textarea
+                  value={premiumMessage}
+                  onChange={(e) => setPremiumMessage(e.target.value)}
+                  placeholder="Optional message for admin…"
+                  rows={2}
+                  className="w-full px-3 py-2 bg-[var(--color-obsidian)] border border-[var(--color-border)] text-[var(--color-ivory)] text-sm rounded"
+                />
+                <button
+                  type="button"
+                  disabled={premiumSubmitting}
+                  onClick={async () => {
+                    if (!token) return;
+                    setPremiumSubmitting(true);
+                    try {
+                      const res = await fetch("/api/escorts/me/premium-request", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ message: premiumMessage || undefined }),
+                      });
+                      if (res.ok) fetchPremiumRequest();
+                    } finally {
+                      setPremiumSubmitting(false);
+                    }
+                  }}
+                  className="px-4 py-2 text-sm border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)]/10 disabled:opacity-50"
+                >
+                  {premiumSubmitting ? "Sending…" : "Request premium"}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -427,6 +556,11 @@ function DashboardContent() {
   );
 }
 
+function DashboardWithSearchParams() {
+  const searchParams = useSearchParams();
+  return <DashboardContent searchParams={searchParams} />;
+}
+
 export default function DashboardPage() {
   return (
     <Suspense
@@ -436,7 +570,7 @@ export default function DashboardPage() {
         </div>
       }
     >
-      <DashboardContent />
+      <DashboardWithSearchParams />
     </Suspense>
   );
 }

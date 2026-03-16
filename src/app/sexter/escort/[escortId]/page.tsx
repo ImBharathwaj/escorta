@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { BlurredImage } from "@/components/BlurredImage";
+import { TipButton } from "@/components/TipButton";
 
 type SexterMessage = {
   id: string;
@@ -320,6 +321,14 @@ export default function SexterEscortChatPage() {
           <div className="p-4 border-t border-[var(--color-border)]">
             {sexterSession && (
               <div className="flex flex-wrap items-center gap-2 mb-2">
+                <TipButton
+                  context="sexter_session"
+                  referenceId={sexterSession.id}
+                  recipientName={otherName || "Companion"}
+                  token={token}
+                  onSuccess={refreshUser}
+                  className="text-xs tracking-wider uppercase border border-[var(--color-champagne)]/60 text-[var(--color-champagne)] hover:bg-[var(--color-champagne)]/10 px-3 py-2 rounded-sm disabled:opacity-50"
+                />
                 <button type="button" onClick={handleExtend} disabled={extending} className="text-xs tracking-wider uppercase border border-[var(--color-champagne)]/60 text-[var(--color-champagne)] hover:bg-[var(--color-champagne)]/10 px-3 py-2 rounded-sm disabled:opacity-50">
                   {extending ? "Extending…" : "Extend session (1 credit, +5 min)"}
                 </button>

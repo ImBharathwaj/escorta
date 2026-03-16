@@ -23,6 +23,14 @@ const TYPE_LABELS: Record<string, string> = {
   sexter_extend: "Sexter session (extended)",
   sexter_earned: "Sexter session",
   signup_bonus: "Signup bonus",
+  admin_grant: "Admin grant",
+  live_watch: "Live stream",
+  live_earned: "Live stream",
+  video_call: "Video call",
+  video_call_extend: "Video call (extended)",
+  video_call_earned: "Video call",
+  tip: "Tip",
+  tip_earned: "Tip",
 };
 
 /** GET: Credit usage (client) or earnings (companion) history. */
@@ -81,8 +89,18 @@ export async function GET(req: NextRequest) {
     { spent: 0, earned: 0 }
   );
 
+  // For companions: earnings breakdown by type (e.g. Live stream, Video call, Sexter, Connection)
+  const summaryByType: Record<string, number> = {};
+  list.forEach((t) => {
+    if (t.amount > 0) {
+      const key = t.type;
+      summaryByType[key] = (summaryByType[key] ?? 0) + t.amount;
+    }
+  });
+
   return NextResponse.json({
     transactions: list,
     summary,
+    summaryByType: Object.keys(summaryByType).length ? summaryByType : undefined,
   });
 }

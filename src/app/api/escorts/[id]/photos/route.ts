@@ -15,6 +15,36 @@ function getUser(req: NextRequest) {
   }
 }
 
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const payload = getUser(req);
+  if (!payload) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id: escortId } = await params;
+
+  const escort = await prisma.escortProfile.findUnique({
+    where: { id: escortId },
+  });
+
+  if (!escort) {
+    return NextResponse.json({ error: "Companion not found" }, { status: 404 });
+  }
+  if (escort.userId !== payload.userId && payload.role !== "admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const photos = await prisma.escortPhoto.findMany({
+    where: { escortId, isApproved: true, allowGallery: true },
+    orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+  });
+
+  return NextResponse.json({ photos });
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

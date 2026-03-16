@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
       credits: true,
       orientation: true,
       preferencesNotes: true,
+      preferredLanguages: true,
       createdAt: true,
       clientPreferredServices: {
         select: { adultService: { select: { name: true } } },
@@ -53,6 +54,7 @@ export async function GET(req: NextRequest) {
     ...rest,
     avatarSignedUrl,
     preferredServices,
+    preferredLanguages: rest.preferredLanguages ?? [],
   });
 }
 
@@ -69,6 +71,7 @@ export async function PATCH(req: NextRequest) {
     orientation,
     preferences_notes,
     preferred_services,
+    preferred_languages,
   } = body;
 
   if (preferred_services !== undefined) {
@@ -104,6 +107,11 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
+  const languagesArray =
+    preferred_languages !== undefined && Array.isArray(preferred_languages)
+      ? preferred_languages.map((s: unknown) => String(s).trim()).filter(Boolean)
+      : undefined;
+
   await prisma.user.update({
     where: { id: payload.userId },
     data: {
@@ -114,6 +122,7 @@ export async function PATCH(req: NextRequest) {
       ...(preferences_notes !== undefined && {
         preferencesNotes: preferences_notes?.trim() || null,
       }),
+      ...(languagesArray !== undefined && { preferredLanguages: languagesArray }),
     },
   });
 
@@ -130,6 +139,7 @@ export async function PATCH(req: NextRequest) {
       credits: true,
       orientation: true,
       preferencesNotes: true,
+      preferredLanguages: true,
       createdAt: true,
       clientPreferredServices: {
         select: { adultService: { select: { name: true } } },
@@ -146,5 +156,10 @@ export async function PATCH(req: NextRequest) {
   const avatarSignedUrl = rest.avatarUrl
     ? await getSignedImageUrl(rest.avatarUrl).catch(() => null)
     : null;
-  return NextResponse.json({ ...rest, preferredServices, avatarSignedUrl });
+  return NextResponse.json({
+    ...rest,
+    preferredServices,
+    preferredLanguages: rest.preferredLanguages ?? [],
+    avatarSignedUrl,
+  });
 }

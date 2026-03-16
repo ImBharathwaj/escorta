@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { rateLimit } from "@/lib/rateLimit";
 
 /** POST: Verify email using token from verification link. */
 export async function POST(req: NextRequest) {
+  const limited = rateLimit(req, { keyPrefix: "auth:verify-email", limit: 12, windowMs: 60_000 });
+  if (limited) return limited;
+
   const body = await req.json().catch(() => ({}));
   const token = typeof body.token === "string" ? body.token.trim() : null;
   const fromQuery = req.nextUrl.searchParams.get("token");

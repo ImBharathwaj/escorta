@@ -70,7 +70,7 @@ export async function PATCH(
   }
 
   const body = await req.json();
-  const { alias_name, age, gender, city, country, description, price_per_hour, services, adult_services } = body;
+  const { alias_name, age, gender, city, country, description, price_per_hour, services, adult_services, languages } = body;
 
   await prisma.escortProfile.update({
     where: { id },
@@ -82,6 +82,12 @@ export async function PATCH(
       ...(country !== undefined && { country: country ?? null }),
       ...(description !== undefined && { description: description ?? null }),
       ...(price_per_hour !== undefined && { pricePerHour: price_per_hour ?? null }),
+      ...(languages !== undefined &&
+        Array.isArray(languages) && {
+          languages: languages
+            .map((s: unknown) => String(s).trim())
+            .filter(Boolean),
+        }),
     },
   });
 

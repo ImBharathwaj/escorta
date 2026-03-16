@@ -1,26 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { sendVerificationEmail } from "@/lib/email";
+import { requireAuth } from "@/lib/auth";
+import { rateLimit } from "@/lib/rateLimit";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 const VERIFICATION_EXPIRY_HOURS = 24;
-
-function getUser(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return null;
-  try {
-    return jwt.verify(auth.slice(7), JWT_SECRET) as { userId: string };
-  } catch {
-    return null;
-  }
-}
 
 /** POST: Send verification email to current user (requires auth). */
 export async function POST(req: NextRequest) {
-  const payload = getUser(req);
-  if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const limited = rateLimit(req, { keyPrefix: "auth:send-verification", limit: 5, windowMs: 60_000 });
+  if (limited) return limited;
+
+  const payload = requireAuth(req);
+  if (payload instanceof NextResponse) return payload;
 
   const user = await prisma.user.findUnique({
     where: { id: payload.userId },

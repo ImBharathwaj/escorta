@@ -1,27 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
 import { uploadSexterMedia, getSignedImageUrl } from "@/lib/minio";
-
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
-
-function getUser(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return null;
-  try {
-    return jwt.verify(auth.slice(7), JWT_SECRET) as { userId: string; role: string };
-  } catch {
-    return null;
-  }
-}
+import { requireAuth } from "@/lib/auth";
 
 /** GET: Escort only. Active sexter session + messages for this escort + client (standalone). */
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ clientId: string }> }
 ) {
-  const payload = getUser(req);
-  if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const payload = requireAuth(req);
+  if (payload instanceof NextResponse) return payload;
   if (payload.role !== "escort") return NextResponse.json({ error: "Escorts only" }, { status: 403 });
 
   const profile = await prisma.escortProfile.findUnique({
@@ -38,6 +26,7 @@ export async function GET(
     orderBy: { createdAt: "desc" },
     include: {
       messages: {
+        where: { deletedAt: null },
         orderBy: { createdAt: "asc" },
         include: { sender: { select: { id: true, role: true } } },
       },
@@ -60,7 +49,7 @@ export async function GET(
 
   if (!session) {
     return NextResponse.json(
-      { session: null, messages: [], canSend: false, expiresAt: null, isExpired: false, otherName, otherImageUrl },
+      { session: null, messages: [], tips: [], canSend: false, expiresAt: null, isExpired: false, otherName, otherImageUrl },
       { headers: { "Cache-Control": "no-store, no-cache, must-revalidate", Pragma: "no-cache" } }
     );
   }
@@ -92,10 +81,28 @@ export async function GET(
     })
   );
 
+  const tipTxns = await prisma.creditTransaction.findMany({
+    where: {
+      userId: profile.userId,
+      type: "tip_earned",
+      referenceType: "sexter_session",
+      referenceId: session.id,
+    },
+    orderBy: { createdAt: "asc" },
+    include: { relatedUser: { select: { displayName: true, email: true } } },
+  });
+  const tips = tipTxns.map((t) => ({
+    id: t.id,
+    amount: t.amount,
+    clientName: t.relatedUser?.displayName?.trim() || t.relatedUser?.email || "A member",
+    createdAt: t.createdAt.toISOString(),
+  }));
+
   return NextResponse.json(
     {
       session: { id: session.id, createdAt: session.createdAt, expiresAt: session.expiresAt, endedAt: session.endedAt },
       messages: messagesWithSignedUrls,
+      tips,
       canSend,
       expiresAt: session.expiresAt,
       isExpired: !isActive,
@@ -111,8 +118,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ clientId: string }> }
 ) {
-  const payload = getUser(req);
-  if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const payload = requireAuth(req);
+  if (payload instanceof NextResponse) return payload;
   if (payload.role !== "escort") return NextResponse.json({ error: "Escorts only" }, { status: 403 });
 
   const profile = await prisma.escortProfile.findUnique({
@@ -121,6 +128,18 @@ export async function POST(
   if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
   const { clientId } = await params;
+  // Block checks for escort-initiated sexter.
+  const blocked = await prisma.userBlock.findFirst({
+    where: {
+      OR: [
+        { blockerId: payload.userId, blockedId: clientId },
+        { blockerId: clientId, blockedId: payload.userId },
+      ],
+    },
+  });
+  if (blocked) {
+    return NextResponse.json({ error: "Messaging is disabled between you and this user." }, { status: 403 });
+  }
   const session = await prisma.sexterSession.findFirst({
     where: { clientId, escortId: profile.id },
     orderBy: { createdAt: "desc" },

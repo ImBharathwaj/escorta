@@ -7,7 +7,15 @@ export type CreditTransactionType =
   | "sexter_session"
   | "sexter_extend"
   | "sexter_earned"
-  | "signup_bonus";
+  | "signup_bonus"
+  | "admin_grant"
+  | "live_watch"
+  | "live_earned"
+  | "video_call"
+  | "video_call_extend"
+  | "video_call_earned"
+  | "tip"
+  | "tip_earned";
 
 /**
  * Record a single credit transaction (client spend or companion earn).
@@ -16,7 +24,7 @@ export async function recordCreditTransaction(params: {
   userId: string;
   amount: number;
   type: CreditTransactionType;
-  referenceType?: "booking" | "sexter_session";
+  referenceType?: "booking" | "sexter_session" | "live_session" | "video_call";
   referenceId?: string;
   relatedUserId?: string;
 }) {
@@ -67,6 +75,131 @@ export async function recordClientSpendAndCompanionEarn(params: {
               type: "sexter_earned" as const,
               referenceType: "sexter_session" as const,
               referenceId: params.sexterSessionId,
+              relatedUserId: params.clientUserId,
+            },
+          ]
+        : []),
+    ],
+  });
+}
+
+/**
+ * Record client spend (live watch) and companion earn.
+ */
+export async function recordLiveWatchAndEarn(params: {
+  clientUserId: string;
+  escortId: string;
+  amount: number;
+  liveSessionId: string;
+}) {
+  const escort = await prisma.escortProfile.findUnique({
+    where: { id: params.escortId },
+    select: { userId: true },
+  });
+  const escortUserId = escort?.userId ?? null;
+
+  await prisma.creditTransaction.createMany({
+    data: [
+      {
+        userId: params.clientUserId,
+        amount: -params.amount,
+        type: "live_watch",
+        referenceType: "live_session",
+        referenceId: params.liveSessionId,
+        relatedUserId: escortUserId,
+      },
+      ...(escortUserId
+        ? [
+            {
+              userId: escortUserId,
+              amount: params.amount,
+              type: "live_earned" as const,
+              referenceType: "live_session" as const,
+              referenceId: params.liveSessionId,
+              relatedUserId: params.clientUserId,
+            },
+          ]
+        : []),
+    ],
+  });
+}
+
+/**
+ * Record video call client spend and companion earn.
+ */
+export async function recordVideoCallAndEarn(params: {
+  clientUserId: string;
+  escortId: string;
+  amount: number;
+  videoCallSessionId: string;
+  type: "video_call" | "video_call_extend";
+}) {
+  const escort = await prisma.escortProfile.findUnique({
+    where: { id: params.escortId },
+    select: { userId: true },
+  });
+  const escortUserId = escort?.userId ?? null;
+
+  await prisma.creditTransaction.createMany({
+    data: [
+      {
+        userId: params.clientUserId,
+        amount: -params.amount,
+        type: params.type,
+        referenceType: "video_call",
+        referenceId: params.videoCallSessionId,
+        relatedUserId: escortUserId,
+      },
+      ...(escortUserId
+        ? [
+            {
+              userId: escortUserId,
+              amount: params.amount,
+              type: "video_call_earned" as const,
+              referenceType: "video_call" as const,
+              referenceId: params.videoCallSessionId,
+              relatedUserId: params.clientUserId,
+            },
+          ]
+        : []),
+    ],
+  });
+}
+
+/**
+ * Record tip: client spend and companion earn (private chat, sexter, live, video call).
+ */
+export async function recordTipAndEarn(params: {
+  clientUserId: string;
+  escortId: string;
+  amount: number;
+  referenceType: "booking" | "sexter_session" | "live_session" | "video_call";
+  referenceId: string;
+}) {
+  const escort = await prisma.escortProfile.findUnique({
+    where: { id: params.escortId },
+    select: { userId: true },
+  });
+  const escortUserId = escort?.userId ?? null;
+
+  await prisma.creditTransaction.createMany({
+    data: [
+      {
+        userId: params.clientUserId,
+        amount: -params.amount,
+        type: "tip",
+        referenceType: params.referenceType,
+        referenceId: params.referenceId,
+        relatedUserId: escortUserId,
+      },
+      ...(escortUserId
+        ? [
+            {
+              userId: escortUserId,
+              amount: params.amount,
+              type: "tip_earned" as const,
+              referenceType: params.referenceType,
+              referenceId: params.referenceId,
               relatedUserId: params.clientUserId,
             },
           ]
