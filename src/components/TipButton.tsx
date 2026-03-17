@@ -13,6 +13,7 @@ type TipButtonProps = {
   onSuccess?: () => void;
   className?: string;
   disabled?: boolean;
+  children?: React.ReactNode;
 };
 
 const TIP_SUCCESS_DURATION_MS = 1400;
@@ -25,6 +26,7 @@ export function TipButton({
   onSuccess,
   className = "",
   disabled = false,
+  children,
 }: TipButtonProps) {
   const [showModal, setShowModal] = useState(false);
   const [amount, setAmount] = useState(TIP_MIN_CREDITS);
@@ -78,7 +80,7 @@ export function TipButton({
         disabled={disabled}
         className={className || "px-3 py-1.5 text-sm border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)]/10 disabled:opacity-50"}
       >
-        Tip
+        {children ?? "Tip"}
       </button>
       {showModal && (
         <div

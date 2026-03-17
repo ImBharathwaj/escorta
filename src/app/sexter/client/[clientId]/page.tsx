@@ -209,10 +209,6 @@ export default function SexterClientChatPage() {
               {expiresAt && isExpired && (
                 <p className="text-xs mt-1 text-[var(--color-muted)]">Session expired. Client can extend.</p>
               )}
-              <p className="text-[0.7rem] text-[var(--color-muted)] mt-1 max-w-md">
-                Safety tip: if a client sends abusive or illegal content, you can stop replying and report this Sexter
-                chat so our team can review.
-              </p>
             </div>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-4">

@@ -303,10 +303,6 @@ export default function ChatPage() {
               <p className="text-xs text-[var(--color-silver)] mt-1">
                 For connection and arranging meetups
               </p>
-              <p className="text-[0.7rem] text-[var(--color-muted)] mt-1 max-w-md">
-                Safety tip: keep chat inside Escorta, don&apos;t share phone numbers, socials, or payment links, and if
-                anything feels off you can end the chat and block/report this user.
-              </p>
             </div>
             {user?.role === "client" && canSend && escortId && (
               (() => {

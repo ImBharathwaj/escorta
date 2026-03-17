@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { Room, LocalTrackPublication, LocalParticipant } from "livekit-client";
+import { IconExitFullscreen, IconFullscreen, IconEndCall } from "@/components/icons/CallIcons";
 
 type LiveSession = { id: string; roomName: string; startedAt: string };
 type VodItem = { id: string; createdAt: string; playbackUrl: string };
@@ -34,6 +35,28 @@ export default function GoLivePage() {
   const [tipToasts, setTipToasts] = useState<TipToast[]>([]);
   const seenTipIdsRef = useRef<Set<string>>(new Set());
   const tipRemoveTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+      const container = document.getElementById("live-stage");
+      if (container?.requestFullscreen) {
+        await container.requestFullscreen();
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   useEffect(() => {
     if (!authReady) return;
@@ -127,6 +150,10 @@ export default function GoLivePage() {
 
   const startLive = async () => {
     if (!token) return;
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      setError("Camera/mic require HTTPS (secure context). Open the site over trusted HTTPS on mobile.");
+      return;
+    }
     if (liveSource === "vod" && !selectedVodId) {
       setError("Select an uploaded video first");
       return;
@@ -358,7 +385,10 @@ export default function GoLivePage() {
           <div className="space-y-4">
             <h1 className="text-2xl font-light text-[var(--color-ivory)]">You&apos;re live</h1>
             <div className="flex flex-col lg:flex-row gap-6">
-              <div className="flex-1 bg-black rounded overflow-hidden aspect-video max-h-[500px] flex items-center justify-center relative">
+              <div
+                id="live-stage"
+                className="flex-1 bg-black rounded overflow-hidden aspect-video max-h-[500px] flex items-center justify-center relative"
+              >
                 {room && <LivePreview room={room} />}
                 <div className="absolute bottom-3 left-3 flex items-center gap-2">
                   <span className="px-2 py-1 bg-red-500/90 text-white text-xs font-medium rounded">
@@ -384,6 +414,29 @@ export default function GoLivePage() {
                       </p>
                     </div>
                   ))}
+                </div>
+
+                <div className="call-controls absolute bottom-3 left-3 right-3 flex items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void toggleFullscreen()}
+                    aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
+                    title={isFullscreen ? "Exit full screen" : "Full screen"}
+                    className="w-11 h-11 inline-flex items-center justify-center rounded-full border border-[var(--color-border)] text-[var(--color-silver)] hover:text-[var(--color-ivory)] hover:bg-[var(--color-charcoal)]/40 disabled:opacity-50 bg-black/30 backdrop-blur-sm"
+                  >
+                    {isFullscreen ? <IconExitFullscreen /> : <IconFullscreen />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={endLive}
+                    disabled={ending}
+                    aria-label="End live"
+                    title="End live"
+                    className="w-11 h-11 inline-flex items-center justify-center rounded-full border border-red-500/80 text-red-300 hover:bg-red-500/20 disabled:opacity-50 bg-black/30 backdrop-blur-sm"
+                  >
+                    <span className="sr-only">{ending ? "Ending" : "End live"}</span>
+                    <IconEndCall />
+                  </button>
                 </div>
               </div>
               <div className="w-full lg:w-80 flex flex-col border border-[var(--color-border)] bg-[var(--color-charcoal)] rounded">

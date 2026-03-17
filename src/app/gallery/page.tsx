@@ -47,7 +47,7 @@ export default async function GalleryIndexPage() {
                 >
                   {hero ? (
                     <img
-                      src={hero.src}
+                      src={`/api/media?src=${encodeURIComponent(hero.src)}`}
                       alt={hero.alt || g.h1}
                       className="w-full max-h-[260px] object-contain bg-[var(--color-obsidian)]"
                     />
