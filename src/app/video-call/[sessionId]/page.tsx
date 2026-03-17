@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { Room, RemoteTrack, RemoteTrackPublication, RemoteParticipant, LocalTrackPublication, LocalParticipant } from "livekit-client";
 import { TipButton } from "@/components/TipButton";
+import { IconEndCall, IconExitFullscreen, IconExtend, IconFullscreen, IconTipCoin } from "@/components/icons/CallIcons";
 
 type SessionInfo = {
   id: string;
@@ -51,6 +52,9 @@ export default function VideoCallPage() {
   const [reporting, setReporting] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [reportMessage, setReportMessage] = useState("");
+  const [mediaStarting, setMediaStarting] = useState(false);
+  const [mediaStarted, setMediaStarted] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const fetchJoin = useCallback(() => {
     if (!token || !sessionId) return;
@@ -141,14 +145,21 @@ export default function VideoCallPage() {
     if (!livekitToken || !livekitUrl || !session || callEnded) return;
     const r = new Room();
     roomRef.current = r;
+    setMediaStarted(false);
     r.connect(livekitUrl, livekitToken)
-      .then(() => r.localParticipant.enableCameraAndMicrophone())
       .then(() => {
         setRoom(r);
-        r.startAudio?.();
       })
       .catch((err) => {
-        setError(err?.message || "Failed to connect");
+        const raw = (err && typeof err.message === "string" ? err.message : "") || "";
+        const lower = raw.toLowerCase();
+        if (lower.includes("client initiated disconnect")) {
+          // Peer left or closed the call while connecting; treat as a normal end rather than a hard error.
+          setCallEnded(true);
+          setError("The other person left the call.");
+        } else {
+          setError(raw || "Failed to connect");
+        }
         setRoom(null);
         roomRef.current = null;
       });
@@ -157,6 +168,73 @@ export default function VideoCallPage() {
       roomRef.current = null;
     };
   }, [livekitToken, livekitUrl, session?.id, callEnded]);
+
+  const startMedia = useCallback(async () => {
+    const r = roomRef.current;
+    if (!r || mediaStarting || mediaStarted) return;
+    if (typeof window !== "undefined") {
+      if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setError(
+          "Camera & mic need a secure connection. Use HTTPS with a trusted certificate or http://localhost in development."
+        );
+        return;
+      }
+    }
+    setError("");
+    setMediaStarting(true);
+    try {
+      // Mobile browsers (especially iOS Safari) require a user gesture to start getUserMedia + audio playback.
+      await r.localParticipant.enableCameraAndMicrophone();
+      await r.startAudio?.();
+      setMediaStarted(true);
+    } catch (e: unknown) {
+      const msg =
+        e instanceof Error
+          ? e.message
+          : "Permission denied. Please allow camera & microphone and reload.";
+      setError(msg);
+    } finally {
+      setMediaStarting(false);
+    }
+  }, [mediaStarting, mediaStarted]);
+
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+
+      const container = document.getElementById("video-call-stage");
+      const remoteVideo = document.getElementById("video-call-remote") as
+        | (HTMLVideoElement & { webkitEnterFullscreen?: () => void })
+        | null;
+
+      // Prefer fullscreen on the container (desktop + modern Android Chrome).
+      if (container?.requestFullscreen) {
+        await container.requestFullscreen();
+        return;
+      }
+
+      // iOS Safari fallback: only video elements can truly enter fullscreen.
+      if (remoteVideo?.webkitEnterFullscreen) {
+        remoteVideo.webkitEnterFullscreen();
+        return;
+      }
+
+      if (remoteVideo?.requestFullscreen) {
+        await remoteVideo.requestFullscreen();
+      }
+    } catch (e) {
+      // Ignore; browser may block fullscreen without direct user gesture in some cases.
+    }
+  }, []);
 
   useEffect(() => {
     if (!token || !sessionId) return;
@@ -300,7 +378,7 @@ export default function VideoCallPage() {
 
   return (
     <div className="pt-16 min-h-screen flex flex-col">
-      <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full px-4 py-6">
+      <div className="flex-1 flex flex-col w-full px-0 py-0">
         <div className="flex items-center justify-between mb-2">
           <div className="flex flex-col">
             <Link
@@ -312,14 +390,13 @@ export default function VideoCallPage() {
             <span className="mt-1 text-sm text-[var(--color-silver)]">
               Video call with {session.other.name}
             </span>
-            <p className="mt-1 text-xs text-[var(--color-silver)] max-w-xl">
-              Safety tip: keep conversations on Escorta, avoid sharing phone numbers, social handles, or payment links,
-              and end the call plus block/report from chat if anything feels unsafe.
-            </p>
           </div>
         </div>
 
-        <div className="flex-1 relative bg-black rounded-lg overflow-hidden aspect-video max-h-[70vh] flex items-center justify-center">
+        <div
+          id="video-call-stage"
+          className="flex-1 relative bg-black overflow-hidden flex items-center justify-center w-full h-[calc(100vh-10rem)]"
+        >
           {!room && (
             <p className="text-[var(--color-silver)] text-sm">Connecting camera…</p>
           )}
@@ -328,10 +405,30 @@ export default function VideoCallPage() {
               <div className="absolute inset-0 flex items-center justify-center">
                 <VideoCallRemote room={room} />
               </div>
-              <div className="absolute bottom-4 right-4 w-40 aspect-video rounded border-2 border-[var(--color-border)] overflow-hidden bg-[var(--color-charcoal)]">
+              <div className="absolute bottom-4 right-4 w-40 sm:w-48 aspect-video rounded border-2 border-[var(--color-border)] overflow-hidden bg-[var(--color-charcoal)]">
                 <VideoCallLocal room={room} />
               </div>
             </>
+          )}
+          {room && !callEnded && !mediaStarted && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm p-6 text-center">
+              <p className="text-[var(--color-ivory)] font-light mb-3">
+                Tap to enable camera & microphone
+              </p>
+              <p className="text-sm text-[var(--color-silver)] mb-4 max-w-md">
+                Mobile browsers require a user action to start the camera/mic. If you&apos;re using HTTP or an untrusted
+                HTTPS certificate, permissions may fail even if you granted them in settings.
+              </p>
+              {error && <p className="text-red-300/90 text-xs mb-3">{error}</p>}
+              <button
+                type="button"
+                onClick={() => void startMedia()}
+                disabled={mediaStarting}
+                className="px-5 py-2.5 text-sm tracking-widest uppercase border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)]/10 disabled:opacity-50 rounded-sm"
+              >
+                {mediaStarting ? "Starting…" : "Enable camera & mic"}
+              </button>
+            </div>
           )}
           {!callEnded && (
             <div className="absolute top-3 left-3 flex items-center gap-2">
@@ -391,7 +488,16 @@ export default function VideoCallPage() {
           <p className="mt-2 text-sm text-amber-200/90">{error}</p>
         )}
 
-        <div className="mt-6 flex flex-wrap items-center gap-3">
+        <div className="call-controls mt-4 flex flex-wrap items-center gap-2 sm:gap-3 justify-center">
+          <button
+            type="button"
+            onClick={() => void toggleFullscreen()}
+            aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
+            title={isFullscreen ? "Exit full screen" : "Full screen"}
+            className="w-11 h-11 inline-flex items-center justify-center rounded-full border border-[var(--color-border)] text-[var(--color-silver)] hover:text-[var(--color-ivory)] hover:bg-[var(--color-charcoal)]/40 disabled:opacity-50"
+          >
+            {isFullscreen ? <IconExitFullscreen /> : <IconFullscreen />}
+          </button>
           {user?.role === "client" && (
             <>
               <TipButton
@@ -400,15 +506,21 @@ export default function VideoCallPage() {
                 recipientName={session.other.name}
                 token={token}
                 onSuccess={refreshUser}
-                className="px-5 py-2.5 text-sm tracking-widest uppercase border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)]/10 disabled:opacity-50 rounded-sm"
-              />
+                className="w-11 h-11 inline-flex items-center justify-center rounded-full border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)]/10 disabled:opacity-50"
+              >
+                <span className="sr-only">Tip</span>
+                <IconTipCoin />
+              </TipButton>
               <button
                 type="button"
                 onClick={extendCall}
                 disabled={extending}
-                className="px-5 py-2.5 text-sm tracking-widest uppercase border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)]/10 disabled:opacity-50 rounded-sm"
+                aria-label="Extend call"
+                title="Extend call"
+                className="w-11 h-11 inline-flex items-center justify-center rounded-full border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)]/10 disabled:opacity-50"
               >
-                {extending ? "Extending…" : "Extend (+2 min, 1 credit)"}
+                <span className="sr-only">{extending ? "Extending" : "Extend"}</span>
+                <IconExtend />
               </button>
             </>
           )}
@@ -416,13 +528,16 @@ export default function VideoCallPage() {
             type="button"
             onClick={endCall}
             disabled={ending}
-            className="px-5 py-2.5 text-sm tracking-widest uppercase border border-red-500/80 text-red-300 hover:bg-red-500/20 disabled:opacity-50 rounded-sm"
+            aria-label="End call"
+            title="End call"
+            className="w-11 h-11 inline-flex items-center justify-center rounded-full border border-red-500/80 text-red-300 hover:bg-red-500/20 disabled:opacity-50"
           >
-            {ending ? "Ending…" : "End call"}
+            <span className="sr-only">{ending ? "Ending" : "End call"}</span>
+            <IconEndCall />
           </button>
         </div>
 
-        <div className="mt-4 border-t border-[var(--color-border)] pt-3">
+        <div className="hidden mt-4 border-t border-[var(--color-border)] pt-3">
           <details className="text-xs text-[var(--color-muted)]">
             <summary className="cursor-pointer select-none text-[var(--color-silver)]">
               Something feels off? Report this video call.
@@ -491,7 +606,7 @@ function VideoCallRemote({ room }: { room: Room }) {
 
   useEffect(() => {
     if (!videoEl || !room) return;
-    const onTrackSubscribed = (track: RemoteTrack, _pub: RemoteTrackPublication, _p: RemoteParticipant) => {
+    const onTrackSubscribed = (track: RemoteTrack, _publication: RemoteTrackPublication, _participant: RemoteParticipant) => {
       if (!videoEl) return;
       if (track.kind === "video") {
         if (typeof track.attach === "function") {
@@ -553,7 +668,15 @@ function VideoCallRemote({ room }: { room: Room }) {
     };
   }, [room, videoEl]);
 
-  return <video ref={setVideoEl} autoPlay playsInline className="w-full h-full object-cover" />;
+  return (
+    <video
+      id="video-call-remote"
+      ref={setVideoEl}
+      autoPlay
+      playsInline
+      className="w-full h-full object-cover"
+    />
+  );
 }
 
 function VideoCallLocal({ room }: { room: Room }) {

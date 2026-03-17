@@ -100,7 +100,7 @@ export default async function GalleryDetailPage({
         <GalleryZoomGrid
           images={gallery.images.map((img) => ({
             id: img.id,
-            src: img.src,
+            src: `/api/media?src=${encodeURIComponent(img.src)}`,
             alt: img.alt,
             caption: img.caption,
           }))}
@@ -130,7 +130,7 @@ export default async function GalleryDetailPage({
               description: gallery.description,
               hasPart: gallery.images.map((img) => ({
                 "@type": "ImageObject",
-                contentUrl: img.src,
+                contentUrl: `/api/media?src=${encodeURIComponent(img.src)}`,
                 caption: img.caption ?? img.alt,
               })),
             }),
