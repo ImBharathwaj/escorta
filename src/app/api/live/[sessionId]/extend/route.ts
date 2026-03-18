@@ -74,5 +74,5 @@ export async function POST(
     liveSessionId: session.id,
   });
 
-  return NextResponse.json({ watchExpiresAt: newExpiresAt.toISOString() });
+  return NextResponse.json({ watchExpiresAt: newExpiresAt.toISOString(), serverNow: new Date().toISOString() });
 }

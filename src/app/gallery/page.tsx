@@ -1,7 +1,17 @@
 export const revalidate = 60;
 
+import type { Metadata } from "next";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+
+const baseUrl = process.env.APP_URL || "https://escorta.example.com";
+
+export const metadata: Metadata = {
+  title: "Companion Image Gallery | Escorta",
+  description:
+    "Explore curated, tasteful companion galleries. Discover meetup styles, arrangements, and find your ideal companion on Escorta.",
+  alternates: { canonical: `${baseUrl}/gallery` },
+};
 
 export default async function GalleryIndexPage() {
   const galleries = await prisma.gallery.findMany({
@@ -73,7 +83,7 @@ export default async function GalleryIndexPage() {
           </div>
         )}
 
-        <div className="mt-10 text-sm text-[var(--color-silver)] font-light">
+        <div className="mt-10 space-y-3 text-sm text-[var(--color-silver)] font-light">
           <p>
             Looking for specific companions?{" "}
             <Link
@@ -82,8 +92,18 @@ export default async function GalleryIndexPage() {
             >
               Browse companions
             </Link>
-            .
           </p>
+          <div className="flex flex-wrap gap-2 mt-2">
+            {["Dinner", "Travel", "Events", "GFE", "Massage", "Overnight"].map((s) => (
+              <Link
+                key={s}
+                href={`/services/${s.toLowerCase()}`}
+                className="px-3 py-1 text-xs border border-[var(--color-border)] text-[var(--color-silver)] hover:border-[var(--color-champagne)]/50 hover:text-[var(--color-champagne)] transition rounded-sm"
+              >
+                {s} companions
+              </Link>
+            ))}
+          </div>
         </div>
       </div>
     </div>

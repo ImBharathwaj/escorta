@@ -4,6 +4,7 @@ import { getSignedImageUrl } from "@/lib/minio";
 import { CONNECT_CREDITS } from "@/lib/credits";
 import { recordCreditTransaction } from "@/lib/creditLedger";
 import { requireAuth } from "@/lib/auth";
+import { sendConnectionRequestEmail } from "@/lib/email";
 
 export async function GET(req: NextRequest) {
   const payload = requireAuth(req);
@@ -208,6 +209,34 @@ export async function POST(req: NextRequest) {
       referenceId: booking.id,
       relatedUserId: payload.userId,
     });
+  }
+
+  if (escortProfile?.userId) {
+    const client = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { displayName: true, email: true },
+    });
+    await prisma.notification.create({
+      data: {
+        userId: escortProfile.userId,
+        type: "connection_request",
+        title: `${client?.displayName || client?.email || "A member"} sent you a connection request`,
+        referenceType: "booking",
+        referenceId: booking.id,
+        relatedUserId: payload.userId,
+      },
+    });
+
+    const escortUser = await prisma.user.findUnique({
+      where: { id: escortProfile.userId },
+      select: { email: true, notifyEmailConnections: true },
+    });
+    if (escortUser?.email && escortUser.notifyEmailConnections) {
+      sendConnectionRequestEmail(
+        escortUser.email,
+        client?.displayName || client?.email || "A member"
+      ).catch(() => {});
+    }
   }
 
   return NextResponse.json(booking);

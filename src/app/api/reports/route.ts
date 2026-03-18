@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { rateLimit } from "@/lib/rateLimit";
+import { encryptOptional } from "@/lib/fieldEncryption";
 
 type ReportBody = {
   reportType?: "live_session" | "video_call" | "booking" | "sexter_session" | "user";
@@ -18,7 +19,8 @@ export async function POST(req: NextRequest) {
 
   const body = (await req.json().catch(() => ({}))) as ReportBody;
   const { reportType, referenceId } = body;
-  const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 1000) : null;
+  const reasonRaw = typeof body.reason === "string" ? body.reason.trim().slice(0, 1000) : null;
+  const reason = reasonRaw ? encryptOptional(reasonRaw) : null;
 
   if (!reportType || !referenceId) {
     return NextResponse.json({ error: "reportType and referenceId are required" }, { status: 400 });

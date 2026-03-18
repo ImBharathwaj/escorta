@@ -10,6 +10,7 @@ import { ChatWidget } from "@/components/ChatWidget";
 import { SignupPromoPopup } from "@/components/SignupPromoPopup";
 import { ActivityPing } from "@/components/ActivityPing";
 import { EmailVerificationBanner } from "@/components/EmailVerificationBanner";
+import { AnalyticsScript } from "@/components/AnalyticsScript";
 
 const cormorant = Cormorant_Garamond({
   subsets: ["latin"],
@@ -33,6 +34,9 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${cormorant.variable} ${outfit.variable}`}>
+      <head>
+        <AnalyticsScript />
+      </head>
       <body>
         <AgeGate />
         <AuthProvider>

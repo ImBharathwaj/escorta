@@ -1,30 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
 import { createLiveKitToken, isLiveKitConfigured } from "@/lib/livekit";
 import { LIVE_JOIN_CREDITS, LIVE_WATCH_INITIAL_MINUTES } from "@/lib/credits";
 import { recordLiveWatchAndEarn } from "@/lib/creditLedger";
-
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
-
-function getUser(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return null;
-  try {
-    return jwt.verify(auth.slice(7), JWT_SECRET) as { userId: string; role: string };
-  } catch {
-    return null;
-  }
-}
+import { requireClient } from "@/lib/auth";
 
 /** POST: Client joins a live session (deducts credits, creates viewer, returns LiveKit token to watch). */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
-  const payload = getUser(req);
-  if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (payload.role !== "client") return NextResponse.json({ error: "Clients only" }, { status: 403 });
+  const payload = requireClient(req);
+  if (payload instanceof NextResponse) return payload;
 
   if (!isLiveKitConfigured()) {
     return NextResponse.json({ error: "LiveKit not configured" }, { status: 503 });
@@ -72,6 +59,7 @@ export async function POST(
       url: liveKitUrl || tok.url,
       session: { id: session.id, roomName: session.roomName },
       watchExpiresAt: existing.watchExpiresAt?.toISOString() ?? initialExpiresAt.toISOString(),
+      serverNow: now.toISOString(),
     });
   }
 
@@ -112,5 +100,6 @@ export async function POST(
     url: liveKitUrl || tok.url,
     session: { id: session.id, roomName: session.roomName },
     watchExpiresAt: initialExpiresAt.toISOString(),
+    serverNow: new Date().toISOString(),
   });
 }

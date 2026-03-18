@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { sendVerificationEmail } from "@/lib/email";
 import { recordCreditTransaction } from "@/lib/creditLedger";
 import { rateLimit } from "@/lib/rateLimit";
+import { signAccessToken } from "@/lib/jwt";
+import { newRefreshToken, setRefreshCookie, sha256, REFRESH_TOKEN_TTL_DAYS } from "@/lib/sessions";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 const VERIFICATION_EXPIRY_HOURS = 24;
 
 export async function POST(req: NextRequest) {
@@ -69,11 +69,21 @@ export async function POST(req: NextRequest) {
       await sendVerificationEmail(user.email, verificationUrl);
     }
 
-    const token = jwt.sign(
-      { userId: user.id, role: user.role, email: user.email },
-      JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const refresh = newRefreshToken();
+    const refreshHash = sha256(refresh);
+    const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
+    await prisma.userSession.create({
+      data: {
+        userId: user.id,
+        refreshTokenHash: refreshHash,
+        expiresAt: refreshExpiresAt,
+        userAgent: req.headers.get("user-agent") ?? undefined,
+        ipAddress: req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? undefined,
+      },
+    });
+    await setRefreshCookie(refresh);
+
+    const token = signAccessToken({ userId: user.id, role: user.role, email: user.email });
 
     const body: { user: object; token: string; verificationUrl?: string } = {
       user: { id: user.id, role: user.role, email: user.email, phone: user.phone, credits: user.credits ?? signupCredits, emailVerifiedAt: user.emailVerifiedAt ?? null },

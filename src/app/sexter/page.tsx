@@ -82,21 +82,16 @@ export default function SexterPage() {
   return (
     <div className="pt-16 min-h-screen">
       <div className="max-w-2xl mx-auto px-6 py-8">
-        <h1 className="text-2xl font-light tracking-wide text-[var(--color-ivory)] mb-2">
+        <h1 className="text-2xl font-light tracking-wide text-[var(--color-ivory)] mb-6">
           Sexter
         </h1>
-        <p className="text-sm text-[var(--color-silver)] mb-8">
-          {isClient
-            ? "All companions. Open a chat with anyone—no connection needed. Use credits to start a session (1 credit per 5 min) to chat and share images or videos. Extend anytime for 1 credit per extra 5 min. Session content is deleted when you end it."
-            : "Members who have started sexter with you. Sexter is separate from connection—they use credits to chat. Session content is deleted when the session ends."}
-        </p>
 
         {loading ? (
           <p className="text-[var(--color-silver)] font-light text-sm">Loading...</p>
         ) : isClient ? (
           escorts.length === 0 ? (
             <p className="text-[var(--color-muted)] font-light text-sm">
-              No companions yet. Check the Companions page to discover and connect.
+              No companions yet.
             </p>
           ) : (
             <ul className="space-y-2">
@@ -108,22 +103,16 @@ export default function SexterPage() {
                   >
                     <div className="relative flex-shrink-0">
                       <div className="w-12 h-12 rounded-full overflow-hidden border border-[var(--color-border)] bg-[var(--color-slate)] flex items-center justify-center">
-                        {e.primaryPhotoUrl ? (
-                          <img
-                            src={e.primaryPhotoUrl}
-                            alt=""
-                            className="w-full h-full object-cover"
-                            draggable={false}
-                            onContextMenu={(e) => e.preventDefault()}
-                          />
-                        ) : e.primaryPhotoId ? (
+                        {e.primaryPhotoId ? (
                           <BlurredImage
                             photoId={e.primaryPhotoId}
                             alt=""
                             className="w-full h-full object-cover"
+                            aspect="thumbnail"
+                            skipPremiumOverlay
                           />
                         ) : (
-                          <span className="text-lg text-[var(--color-muted)]">—</span>
+                          <span className="text-sm font-medium text-[var(--color-silver)]">{(e.aliasName || "?")[0].toUpperCase()}</span>
                         )}
                       </div>
                       {e.online && (
@@ -149,7 +138,7 @@ export default function SexterPage() {
           )
         ) : clients.length === 0 ? (
           <p className="text-[var(--color-muted)] font-light text-sm">
-            When members start a sexter chat with you, they'll appear here.
+            No conversations yet.
           </p>
         ) : (
           <ul className="space-y-2">
@@ -170,7 +159,7 @@ export default function SexterPage() {
                           onContextMenu={(e) => e.preventDefault()}
                         />
                       ) : (
-                        <span className="text-lg text-[var(--color-muted)]">—</span>
+                        <span className="text-sm font-medium text-[var(--color-silver)]">{(c.name || "?")[0].toUpperCase()}</span>
                       )}
                     </div>
                     {c.online && (

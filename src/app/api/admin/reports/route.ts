@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth";
+import { decryptOptional } from "@/lib/fieldEncryption";
 
 /** GET: List session reports (admin only). */
 export async function GET(req: NextRequest) {
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest) {
     id: r.id,
     reportType: r.reportType,
     referenceId: r.referenceId,
-    reason: r.reason,
+    reason: decryptOptional(r.reason),
     createdAt: r.createdAt,
     reporter: {
       id: r.reporter.id,

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { trackEvent } from "@/lib/analytics";
 
 const inputStyles =
   "w-full px-4 py-3 bg-[var(--color-charcoal)] border border-[var(--color-border)] text-[var(--color-ivory)] focus:border-[var(--color-champagne)]/50 transition";
@@ -38,12 +39,15 @@ export default function RegisterPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Registration failed");
       login(data.token, data.user);
+      trackEvent("signup", { role });
       if (data.verificationUrl) {
         setError("");
         window.location.href = data.verificationUrl;
         return;
       }
-      if (data.user?.email && !data.user?.emailVerifiedAt) {
+      if (data.user?.role === "client") {
+        router.push("/onboarding");
+      } else if (data.user?.email && !data.user?.emailVerifiedAt) {
         router.push("/dashboard/profile?verify=1");
       } else {
         router.push("/dashboard/profile");
@@ -61,9 +65,6 @@ export default function RegisterPage() {
         <div className="border border-[var(--color-champagne)]/50 bg-[var(--color-champagne)]/5 rounded-sm p-5 mb-8">
           <p className="text-sm font-medium text-[var(--color-champagne)] tracking-wide">
             Sign up and get 10 credits for free
-          </p>
-          <p className="text-xs text-[var(--color-silver)] mt-1 font-light">
-            Use credits to connect with companions and send messages.
           </p>
         </div>
         <p className="text-xs tracking-[0.4em] uppercase text-[var(--color-champagne)] mb-2">

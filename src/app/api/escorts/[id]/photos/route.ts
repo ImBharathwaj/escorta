@@ -1,41 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
 import { uploadPhoto } from "@/lib/minio";
-
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
-
-function getUser(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return null;
-  try {
-    return jwt.verify(auth.slice(7), JWT_SECRET) as { userId: string; role: string };
-  } catch {
-    return null;
-  }
-}
+import { requireAnyRole } from "@/lib/auth";
+import { requireEscortOwner } from "@/lib/authorization";
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const payload = getUser(req);
-  if (!payload) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const payload = requireAnyRole(req, ["escort", "admin"]);
+  if (payload instanceof NextResponse) return payload;
 
   const { id: escortId } = await params;
-
-  const escort = await prisma.escortProfile.findUnique({
-    where: { id: escortId },
-  });
-
-  if (!escort) {
-    return NextResponse.json({ error: "Companion not found" }, { status: 404 });
-  }
-  if (escort.userId !== payload.userId && payload.role !== "admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const escort = await requireEscortOwner(payload, escortId);
+  if (escort instanceof NextResponse) return escort;
 
   const photos = await prisma.escortPhoto.findMany({
     where: { escortId, isApproved: true, allowGallery: true },
@@ -49,23 +27,12 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const payload = getUser(req);
-  if (!payload) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const payload = requireAnyRole(req, ["escort", "admin"]);
+  if (payload instanceof NextResponse) return payload;
 
   const { id: escortId } = await params;
-
-  const escort = await prisma.escortProfile.findUnique({
-    where: { id: escortId },
-  });
-
-  if (!escort) {
-    return NextResponse.json({ error: "Companion not found" }, { status: 404 });
-  }
-  if (escort.userId !== payload.userId && payload.role !== "admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const escort = await requireEscortOwner(payload, escortId);
+  if (escort instanceof NextResponse) return escort;
 
   const formData = await req.formData();
   const file = formData.get("photo") as File | null;
@@ -97,7 +64,9 @@ export async function POST(
         escortId,
         imageUrl,
         isPrimary,
-        isApproved: true,
+        isApproved: false,
+        reviewStatus: "pending",
+        allowGallery: false,
       },
     });
 

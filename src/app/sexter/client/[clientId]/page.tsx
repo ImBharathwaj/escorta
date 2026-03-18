@@ -188,26 +188,23 @@ export default function SexterClientChatPage() {
 
   return (
     <div className="pt-16 min-h-screen flex flex-col">
-      <div className="max-w-2xl mx-auto w-full flex-1 flex flex-col px-6">
-        <Link href="/sexter" className="text-sm tracking-widest uppercase text-[var(--color-silver)] hover:text-[var(--color-ivory)] mb-6 transition">
-          ← Back to Sexter
+      <div className="max-w-2xl mx-auto w-full flex-1 flex flex-col px-3 sm:px-6">
+        <Link href="/sexter" className="text-sm tracking-widest uppercase text-[var(--color-silver)] hover:text-[var(--color-ivory)] mb-4 sm:mb-6 transition">
+          ← Back
         </Link>
-        <div className="border border-[var(--color-border)] bg-[var(--color-charcoal)] rounded-sm flex-1 flex flex-col min-h-[400px]">
-          <div className="p-4 border-b border-[var(--color-border)] flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full overflow-hidden border border-[var(--color-border)] bg-[var(--color-slate)] flex-shrink-0 flex items-center justify-center">
+        <div className="border border-[var(--color-border)] bg-[var(--color-charcoal)] rounded-sm flex-1 flex flex-col min-h-0">
+          <div className="p-3 sm:p-4 border-b border-[var(--color-border)] flex items-center gap-3">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full overflow-hidden border border-[var(--color-border)] bg-[var(--color-slate)] flex-shrink-0 flex items-center justify-center">
               {otherImageUrl ? (
                 <img src={otherImageUrl} alt="" className="w-full h-full object-cover" draggable={false} onContextMenu={(e) => e.preventDefault()} />
               ) : (
-                <span className="text-lg text-[var(--color-muted)]">—</span>
+                <span className="text-sm font-medium text-[var(--color-silver)]">{(otherName || "?")[0].toUpperCase()}</span>
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <h1 className="text-lg font-light text-[var(--color-ivory)]">Sexter with {otherName || "..."}</h1>
-              <p className="text-xs text-[var(--color-silver)] mt-1">
-                Sexter is separate from connection. Client uses credits; session content deleted when session ends.
-              </p>
+              <h1 className="text-base sm:text-lg font-light text-[var(--color-ivory)] truncate">{otherName || "..."}</h1>
               {expiresAt && isExpired && (
-                <p className="text-xs mt-1 text-[var(--color-muted)]">Session expired. Client can extend.</p>
+                <p className="text-xs mt-0.5 text-[var(--color-muted)]">Session expired. Client can extend.</p>
               )}
             </div>
           </div>
@@ -215,7 +212,7 @@ export default function SexterClientChatPage() {
             {loading && chatItems.length === 0 ? (
               <p className="text-[var(--color-silver)] font-light text-sm">Loading...</p>
             ) : chatItems.length === 0 ? (
-              <p className="text-[var(--color-muted)] font-light text-sm">No active session. Client starts the session with credits.</p>
+              <p className="text-[var(--color-muted)] font-light text-sm">No messages yet.</p>
             ) : (
               chatItems.map((item) =>
                 item.type === "tip" ? (
@@ -244,32 +241,36 @@ export default function SexterClientChatPage() {
             )}
             <div ref={bottomRef} />
           </div>
-          <div className="p-4 border-t border-[var(--color-border)]">
+          <div className="p-3 sm:p-4 border-t border-[var(--color-border)]">
             {sexterSession && (
-              <div className="flex flex-wrap items-center gap-2 mb-2">
-                <button type="button" onClick={handleEndSession} disabled={endingSession} className="text-xs tracking-wider uppercase border border-red-400/60 text-red-300/90 hover:bg-red-400/10 px-3 py-2 rounded-sm disabled:opacity-50">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-2">
+                <button type="button" onClick={handleEndSession} disabled={endingSession} className="text-[10px] sm:text-xs tracking-wider uppercase border border-red-400/60 text-red-300/90 hover:bg-red-400/10 px-2 py-1.5 sm:px-3 sm:py-2 rounded-sm disabled:opacity-50">
                   {endingSession ? "Ending…" : "End session"}
                 </button>
               </div>
             )}
             {sendError && <p className="text-sm text-red-300/90 mb-2">{sendError}</p>}
-            {canSend && <p className="text-xs text-[var(--color-silver)] font-light mb-1">Reply with text, images or videos.</p>}
             <form onSubmit={handleSubmit} className={canSend ? "" : "opacity-60 pointer-events-none"}>
-              {canSend && (
-                <div className="flex items-center gap-2 mb-2">
-                  <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)} className="hidden" />
-                  <button type="button" onClick={() => fileInputRef.current?.click()} className="text-xs tracking-wider uppercase border border-[var(--color-border)] text-[var(--color-silver)] hover:text-[var(--color-ivory)] px-3 py-2 rounded-sm">
-                    {attachmentFile ? attachmentFile.name : "+ Image/Video"}
-                  </button>
-                  {attachmentFile && (
-                    <button type="button" onClick={() => { setAttachmentFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }} className="text-xs text-[var(--color-muted)] hover:text-[var(--color-ivory)]">Clear</button>
-                  )}
+              <div className="flex items-center gap-2">
+                {canSend && (
+                  <>
+                    <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)} className="hidden" />
+                    <button type="button" onClick={() => fileInputRef.current?.click()} aria-label="Attach image or video" title={attachmentFile ? attachmentFile.name : "Image/Video"} className="shrink-0 w-10 h-10 inline-flex items-center justify-center rounded-sm border border-[var(--color-border)] text-[var(--color-silver)] hover:text-[var(--color-ivory)] hover:border-[var(--color-champagne)]/40 transition">
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}><path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l7.07-7.07a4 4 0 00-5.656-5.656L5.757 10.76a6 6 0 008.486 8.486L20.5 13" /></svg>
+                    </button>
+                  </>
+                )}
+                <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder={canSend ? "Type a message…" : "Session ended"} maxLength={2000} disabled={!canSend} className="flex-1 min-w-0 px-3 py-2.5 bg-[var(--color-charcoal)] border border-[var(--color-border)] text-[var(--color-ivory)] text-sm focus:border-[var(--color-champagne)]/50 transition rounded-sm disabled:opacity-70" />
+                <button type="submit" disabled={!canSend || sending || (!input.trim() && !attachmentFile)} className="shrink-0 w-10 h-10 inline-flex items-center justify-center rounded-sm border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)] hover:text-[var(--color-obsidian)] transition disabled:opacity-50">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" /></svg>
+                </button>
+              </div>
+              {attachmentFile && (
+                <div className="flex items-center gap-2 mt-1.5 text-xs text-[var(--color-silver)]">
+                  <span className="truncate max-w-[200px]">{attachmentFile.name}</span>
+                  <button type="button" onClick={() => { setAttachmentFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }} className="text-[var(--color-muted)] hover:text-[var(--color-ivory)]">×</button>
                 </div>
               )}
-              <div className="flex gap-2">
-                <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder={canSend ? "Type a message or attach media..." : "Session ended"} maxLength={2000} disabled={!canSend} className="flex-1 px-4 py-3 bg-[var(--color-charcoal)] border border-[var(--color-border)] text-[var(--color-ivory)] focus:border-[var(--color-champagne)]/50 transition rounded-sm disabled:opacity-70" />
-                <button type="submit" disabled={!canSend || sending || (!input.trim() && !attachmentFile)} className="px-6 py-3 text-sm tracking-widest uppercase border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)] hover:text-[var(--color-obsidian)] transition disabled:opacity-50 rounded-sm">Send</button>
-              </div>
             </form>
             <div className="mt-3 border-t border-[var(--color-border)] pt-2">
               <details className="text-xs text-[var(--color-muted)]">

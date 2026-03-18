@@ -1,31 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
-
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
-
-function getUser(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return null;
-  try {
-    return jwt.verify(auth.slice(7), JWT_SECRET) as { userId: string; role: string };
-  } catch {
-    return null;
-  }
-}
+import { requireEscort } from "@/lib/auth";
+import { requireVideoCallAccess } from "@/lib/authorization";
+import { rateLimit } from "@/lib/rateLimit";
 
 /** GET: List recent tips received for this video call session (escort only). */
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
-  const payload = getUser(req);
-  if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (payload.role !== "escort") {
-    return NextResponse.json({ error: "Only the companion can view call tips" }, { status: 403 });
-  }
+  const limited = rateLimit(req, { keyPrefix: "video_call:tips", limit: 60, windowMs: 60_000 });
+  if (limited) return limited;
+
+  const payload = requireEscort(req);
+  if (payload instanceof NextResponse) return payload;
 
   const { sessionId } = await params;
+  const allowed = await requireVideoCallAccess(payload, sessionId);
+  if (allowed instanceof NextResponse) return allowed;
   const session = await prisma.videoCallSession.findUnique({
     where: { id: sessionId },
     include: { escort: { select: { userId: true } } },

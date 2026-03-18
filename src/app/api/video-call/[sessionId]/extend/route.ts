@@ -1,31 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
 import { VIDEO_CALL_CREDITS_PER_BLOCK, VIDEO_CALL_BLOCK_MINUTES } from "@/lib/credits";
 import { recordVideoCallAndEarn } from "@/lib/creditLedger";
-
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
-
-function getUser(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return null;
-  try {
-    return jwt.verify(auth.slice(7), JWT_SECRET) as { userId: string; role: string };
-  } catch {
-    return null;
-  }
-}
+import { requireClient } from "@/lib/auth";
+import { requireVideoCallAccess } from "@/lib/authorization";
 
 /** POST: Client extends the video call (1 credit = +2 min). */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
-  const payload = getUser(req);
-  if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (payload.role !== "client") return NextResponse.json({ error: "Only client can extend" }, { status: 403 });
+  const payload = requireClient(req);
+  if (payload instanceof NextResponse) return payload;
 
   const { sessionId } = await params;
+  const allowed = await requireVideoCallAccess(payload, sessionId);
+  if (allowed instanceof NextResponse) return allowed;
   const session = await prisma.videoCallSession.findUnique({
     where: { id: sessionId },
     select: { id: true, clientId: true, escortId: true, expiresAt: true, status: true },
@@ -69,5 +59,5 @@ export async function POST(
     type: "video_call_extend",
   });
 
-  return NextResponse.json({ expiresAt: newExpiresAt });
+  return NextResponse.json({ expiresAt: newExpiresAt, serverNow: new Date().toISOString() });
 }

@@ -35,6 +35,12 @@ export function TipButton({
   const [tipSuccess, setTipSuccess] = useState(false);
   const [sentAmount, setSentAmount] = useState(0);
 
+  const presetAmounts = [
+    TIP_MIN_CREDITS,
+    Math.min(TIP_MAX_CREDITS, TIP_MIN_CREDITS * 3),
+    Math.min(TIP_MAX_CREDITS, TIP_MIN_CREDITS * 5),
+  ].filter((v, i, arr) => arr.indexOf(v) === i);
+
   useEffect(() => {
     if (!tipSuccess) return;
     const t = setTimeout(() => {
@@ -47,20 +53,20 @@ export function TipButton({
     return () => clearTimeout(t);
   }, [tipSuccess, onSuccess]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!token || submitting || amount < TIP_MIN_CREDITS || amount > TIP_MAX_CREDITS) return;
+  const sendTip = async (value: number) => {
+    if (!token || submitting) return;
+    if (value < TIP_MIN_CREDITS || value > TIP_MAX_CREDITS) return;
     setError("");
     setSubmitting(true);
     try {
       const res = await fetch("/api/tips", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ amount, context, referenceId }),
+        body: JSON.stringify({ amount: value, context, referenceId }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        setSentAmount(amount);
+        setSentAmount(value);
         setTipSuccess(true);
       } else {
         setError(data.error || "Failed to send tip");
@@ -109,39 +115,33 @@ export function TipButton({
               </div>
             ) : (
               <>
-                <h3 className="text-lg font-light text-[var(--color-ivory)] mb-1">Send tip</h3>
-                <p className="text-sm text-[var(--color-silver)] mb-4">
-                  Send credits to {recipientName}. Your balance will be charged.
-                </p>
-                <form onSubmit={handleSubmit}>
-                  <label className="block text-sm text-[var(--color-silver)] mb-2">Amount (credits)</label>
-                  <input
-                    type="number"
-                    min={TIP_MIN_CREDITS}
-                    max={TIP_MAX_CREDITS}
-                    value={amount}
-                    onChange={(e) => setAmount(Math.min(TIP_MAX_CREDITS, Math.max(TIP_MIN_CREDITS, Number(e.target.value) || TIP_MIN_CREDITS)))}
-                    className="w-full px-3 py-2 bg-[var(--color-obsidian)] border border-[var(--color-border)] text-[var(--color-ivory)] rounded mb-4"
-                  />
-                  {error && <p className="text-red-300/90 text-sm mb-3">{error}</p>}
-                  <div className="flex gap-3 justify-end">
+                {/* <h3 className="text-lg font-light text-[var(--color-ivory)] mb-4">Send a tip</h3> */}
+                <div className="space-y-4">
+                  <div className="flex flex-wrap gap-2">
+                    {presetAmounts.map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        disabled={submitting}
+                        onClick={() => void sendTip(value)}
+                        className="px-4 py-2 text-sm rounded-full border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)]/10 disabled:opacity-50"
+                      >
+                        {value}
+                      </button>
+                    ))}
+                  </div>
+                  {error && <p className="text-red-300/90 text-sm">{error}</p>}
+                  <div className="flex justify-end">
                     <button
                       type="button"
                       onClick={() => setShowModal(false)}
                       className="px-4 py-2 text-sm text-[var(--color-silver)] hover:text-[var(--color-ivory)]"
                       disabled={submitting}
                     >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      className="px-4 py-2 text-sm bg-[var(--color-champagne)] text-[var(--color-obsidian)] rounded hover:opacity-90 disabled:opacity-50"
-                    >
-                      {submitting ? "Sending…" : `Send ${amount} credit${amount !== 1 ? "s" : ""}`}
+                      Close
                     </button>
                   </div>
-                </form>
+                </div>
               </>
             )}
           </div>

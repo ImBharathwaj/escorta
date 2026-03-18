@@ -1,7 +1,71 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
+import { EscortCard } from "@/components/escort/EscortCard";
+
+type SpotlightedEscort = {
+  id: string;
+  aliasName: string;
+  age: number | null;
+  city: string | null;
+  gender: string | null;
+  isVerified: boolean;
+  isGenderVerified: boolean;
+  photoId: string | null;
+};
+
+function SpotlightedSection() {
+  const [escorts, setEscorts] = useState<SpotlightedEscort[]>([]);
+
+  useEffect(() => {
+    fetch("/api/spotlighted")
+      .then((r) => r.json())
+      .then((data) => setEscorts(data.spotlighted || []))
+      .catch(() => {});
+  }, []);
+
+  if (escorts.length === 0) return null;
+
+  return (
+    <section className="py-24">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8">
+        <div className="flex items-end justify-between mb-12">
+          <div>
+            <p className="text-xs tracking-[0.3em] uppercase text-[var(--color-champagne)] mb-2">
+              Featured
+            </p>
+            <h2 className="text-2xl md:text-3xl font-light text-[var(--color-ivory)] tracking-wide">
+              Spotlighted companions
+            </h2>
+          </div>
+          <Link
+            href="/companions"
+            className="text-sm text-[var(--color-champagne)] hover:text-[var(--color-champagne-light)] transition underline underline-offset-4"
+          >
+            View all
+          </Link>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
+          {escorts.map((e) => (
+            <EscortCard
+              key={e.id}
+              id={e.id}
+              aliasName={e.aliasName}
+              age={e.age}
+              city={e.city}
+              gender={e.gender}
+              isVerified={e.isVerified}
+              isGenderVerified={e.isGenderVerified}
+              photoId={e.photoId}
+            />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function GuestHome() {
   return (
@@ -75,6 +139,8 @@ function GuestHome() {
           </div>
         </div>
       </section>
+
+      <SpotlightedSection />
 
       {/* Why Escorta */}
       <section className="border-y border-[var(--color-border)] py-24">
@@ -183,7 +249,7 @@ function ClientHome() {
             Discover and connect with companions.
           </h1>
           <p className="mt-6 text-[var(--color-silver)] font-light max-w-xl text-lg leading-relaxed">
-            Browse profiles, send connection requests, and chat to arrange meetups. Use your credits to connect and message.
+            Browse profiles and connect with companions.
           </p>
           <div className="mt-10 flex flex-wrap gap-4">
             <Link
@@ -201,6 +267,8 @@ function ClientHome() {
           </div>
         </div>
       </section>
+
+      <SpotlightedSection />
 
       <section className="border-y border-[var(--color-border)] py-16">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">

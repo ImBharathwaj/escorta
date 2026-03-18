@@ -24,17 +24,16 @@ export async function POST(req: NextRequest) {
     select: { id: true },
   });
 
-  let deleted = 0;
-  for (const s of toPurge) {
-    try {
-      await deleteSexterSessionMedia(s.id);
-    } catch {
-      // continue; media may already be gone
-    }
-    await prisma.sexterMessage.deleteMany({ where: { sexterSessionId: s.id } });
-    await prisma.sexterSession.delete({ where: { id: s.id } });
-    deleted++;
-  }
+  const ids = toPurge.map((s) => s.id);
 
-  return NextResponse.json({ purged: deleted });
+  await Promise.allSettled(ids.map((id) => deleteSexterSessionMedia(id)));
+
+  await prisma.sexterMessage.deleteMany({
+    where: { sexterSessionId: { in: ids } },
+  });
+  await prisma.sexterSession.deleteMany({
+    where: { id: { in: ids } },
+  });
+
+  return NextResponse.json({ purged: ids.length });
 }

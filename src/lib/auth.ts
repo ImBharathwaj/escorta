@@ -35,3 +35,27 @@ export function requireRole(
   return payload;
 }
 
+export function requireAnyRole(
+  req: NextRequest,
+  roles: string[]
+): AuthPayload | NextResponse {
+  const payload = requireAuth(req);
+  if (payload instanceof NextResponse) return payload;
+  if (!roles.includes(payload.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  return payload;
+}
+
+export function requireAdmin(req: NextRequest) {
+  return requireRole(req, "admin");
+}
+
+export function requireClient(req: NextRequest) {
+  return requireRole(req, "client");
+}
+
+export function requireEscort(req: NextRequest) {
+  return requireRole(req, "escort");
+}
+

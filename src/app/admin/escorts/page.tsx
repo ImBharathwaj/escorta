@@ -12,6 +12,7 @@ type Escort = {
   gender: string | null;
   isVerified: boolean;
   isGenderVerified: boolean;
+  isSpotlighted: boolean;
   isActive: boolean;
   user: { email: string | null };
 };
@@ -49,6 +50,30 @@ export default function AdminEscortsPage() {
         setEscorts((prev) =>
           prev.map((e) =>
             e.id === escortId ? { ...e, [field]: value } : e
+          )
+        );
+      }
+    } finally {
+      setUpdating(null);
+    }
+  }
+
+  async function toggleSpotlight(escortId: string, value: boolean) {
+    if (!token) return;
+    setUpdating(escortId);
+    try {
+      const res = await fetch(`/api/admin/escorts/${escortId}/spotlight`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ isSpotlighted: value }),
+      });
+      if (res.ok) {
+        setEscorts((prev) =>
+          prev.map((e) =>
+            e.id === escortId ? { ...e, isSpotlighted: value } : e
           )
         );
       }
@@ -101,6 +126,11 @@ export default function AdminEscortsPage() {
                         Verified female
                       </span>
                     )}
+                    {e.isSpotlighted && (
+                      <span className="text-[10px] px-2 py-0.5 border border-amber-400 text-amber-400 uppercase tracking-wider">
+                        Spotlighted
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-[var(--color-silver)] mt-1">
                     {e.user?.email ?? "—"} · {e.gender ?? "—"} · {e.city ?? "—"}
@@ -131,6 +161,17 @@ export default function AdminEscortsPage() {
                       {e.isGenderVerified ? "Verified female ✓" : "Verify female"}
                     </button>
                   )}
+                  <button
+                    onClick={() => toggleSpotlight(e.id, !e.isSpotlighted)}
+                    disabled={updating === e.id}
+                    className={`px-4 py-2 text-sm border transition disabled:opacity-50 ${
+                      e.isSpotlighted
+                        ? "border-amber-400 bg-amber-400/20 text-amber-400"
+                        : "border-[var(--color-border)] text-[var(--color-silver)] hover:border-amber-400/50"
+                    }`}
+                  >
+                    {e.isSpotlighted ? "Spotlighted ★" : "Spotlight"}
+                  </button>
                   <Link
                     href={`/escorts/${e.id}`}
                     target="_blank"

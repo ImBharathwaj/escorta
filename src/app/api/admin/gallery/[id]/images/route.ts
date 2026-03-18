@@ -55,21 +55,24 @@ export async function POST(
       where: { id: { in: escortPhotoIds } },
       select: { id: true, imageUrl: true },
     });
-    for (const p of photos) {
-      const alt =
+    const escortImageData = photos.map((p) => ({
+      galleryId,
+      src: p.imageUrl,
+      alt:
         String(formData.get(`alt_escort_${p.id}`) || "").trim() ||
-        "Companion image from escort profile";
-      const caption = String(formData.get(`caption_escort_${p.id}`) || "").trim() || null;
-      const img = await prisma.galleryImage.create({
-        data: {
-          galleryId,
-          src: p.imageUrl,
-          alt,
-          caption,
-          escortPhotoId: p.id,
-        },
+        "Companion image from escort profile",
+      caption: String(formData.get(`caption_escort_${p.id}`) || "").trim() || null,
+      escortPhotoId: p.id,
+    }));
+    if (escortImageData.length > 0) {
+      await prisma.galleryImage.createMany({ data: escortImageData });
+      const created = await prisma.galleryImage.findMany({
+        where: { galleryId, escortPhotoId: { in: photos.map((p) => p.id) } },
+        select: { id: true },
+        orderBy: { createdAt: "desc" },
+        take: escortImageData.length,
       });
-      createdImages.push({ id: img.id });
+      createdImages.push(...created);
     }
   }
 

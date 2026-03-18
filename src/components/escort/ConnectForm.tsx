@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { CONNECT_CREDITS } from "@/lib/credits";
-import { VIDEO_CALL_CREDITS_PER_BLOCK } from "@/lib/credits";
+import { trackEvent } from "@/lib/analytics";
 
 function ConnectActions({
   escortId,
@@ -63,7 +63,7 @@ function ConnectActions({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (data.code === "NEED_CREDITS") {
-          setVideoCallError(`You need ${data.required ?? VIDEO_CALL_CREDITS_PER_BLOCK} credit(s). Credits are only used when ${escortName} accepts.`);
+          setVideoCallError("Not enough credits.");
         } else {
           setVideoCallError(data.error || "Failed to send request");
         }
@@ -90,10 +90,10 @@ function ConnectActions({
   }
 
   return (
-    <div className="sticky top-24 space-y-3">
+    <div className="lg:sticky lg:top-24 space-y-3">
       <Link
         href={`/connections/${connectionId}`}
-        className="block border border-[var(--color-champagne)] bg-[var(--color-champagne)]/10 p-6 rounded-sm text-center text-[var(--color-ivory)] font-light hover:bg-[var(--color-champagne)]/20 hover:border-[var(--color-champagne)]/60 transition"
+        className="block border border-[var(--color-champagne)] bg-[var(--color-champagne)]/10 p-4 sm:p-6 rounded-sm text-center text-[var(--color-ivory)] font-light hover:bg-[var(--color-champagne)]/20 hover:border-[var(--color-champagne)]/60 transition"
       >
         <span className="text-sm tracking-widest uppercase text-[var(--color-champagne)] block mb-1">
           Connected
@@ -111,7 +111,7 @@ function ConnectActions({
         {pendingRequestId ? (
           <div className="border border-[var(--color-silver)]/40 bg-[var(--color-charcoal)] p-4 rounded-sm space-y-2">
             <p className="text-sm text-[var(--color-ivory)] font-light">
-              Waiting for {escortName} to accept… (1 credit when they accept)
+              Waiting for {escortName} to accept…
             </p>
             <button
               type="button"
@@ -129,7 +129,7 @@ function ConnectActions({
             disabled={videoCallLoading}
             className="w-full py-3 text-sm tracking-widest uppercase border border-[var(--color-border)] text-[var(--color-ivory)] hover:bg-[var(--color-charcoal)] hover:border-[var(--color-silver)] transition disabled:opacity-50 rounded-sm"
           >
-            {videoCallLoading ? "Sending…" : "Request video call (1 credit when accepted)"}
+            {videoCallLoading ? "Sending…" : "Request video call"}
           </button>
         )}
       </div>
@@ -241,6 +241,7 @@ export default function ConnectForm({
         throw new Error(err.error || "Failed to connect");
       }
       await refreshUser();
+      trackEvent("connection_request");
       router.push("/dashboard?connected=1");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to connect");
@@ -254,33 +255,31 @@ export default function ConnectForm({
 
   if (!user) {
     return (
-      <div className="sticky top-24 border border-[var(--color-border)] bg-[var(--color-charcoal)] p-8 rounded-sm">
+      <div className="lg:sticky lg:top-24 border border-[var(--color-border)] bg-[var(--color-charcoal)] p-4 sm:p-8 rounded-sm">
         <h2 className="text-lg font-light text-[var(--color-ivory)] tracking-wide mb-4">
           Connect with {escortName}
         </h2>
-        <p className="text-[var(--color-silver)] font-light text-sm leading-relaxed">
+        <div className="flex flex-col gap-2">
           <Link
             href={`/login?redirect=${encodeURIComponent("/escorts/" + escortId)}`}
-            className="text-[var(--color-champagne)] hover:text-[var(--color-champagne-light)] transition underline underline-offset-4"
+            className="block w-full py-3 text-sm tracking-widest uppercase text-center border border-[var(--color-champagne)] text-[var(--color-champagne)] hover:bg-[var(--color-champagne)] hover:text-[var(--color-obsidian)] transition rounded-sm"
           >
             Sign in
-          </Link>{" "}
-          or{" "}
+          </Link>
           <Link
             href="/register"
-            className="text-[var(--color-champagne)] hover:text-[var(--color-champagne-light)] transition underline underline-offset-4"
+            className="block w-full py-3 text-sm tracking-widest uppercase text-center border border-[var(--color-border)] text-[var(--color-silver)] hover:border-[var(--color-champagne)]/50 hover:text-[var(--color-ivory)] transition rounded-sm"
           >
-            create an account
-          </Link>{" "}
-          to connect and start a conversation with {escortName}.
-        </p>
+            Create account
+          </Link>
+        </div>
       </div>
     );
   }
 
   if (user.role !== "client") {
     return (
-      <div className="sticky top-24 border border-[var(--color-border)] bg-[var(--color-charcoal)] p-8 rounded-sm">
+      <div className="lg:sticky lg:top-24 border border-[var(--color-border)] bg-[var(--color-charcoal)] p-4 sm:p-8 rounded-sm">
         <h2 className="text-lg font-light text-[var(--color-ivory)] tracking-wide mb-4">
           Connect with {escortName}
         </h2>
@@ -293,7 +292,7 @@ export default function ConnectForm({
 
   if (connectionLoading) {
     return (
-      <div className="sticky top-24 border border-[var(--color-border)] bg-[var(--color-charcoal)] p-8 rounded-sm">
+      <div className="lg:sticky lg:top-24 border border-[var(--color-border)] bg-[var(--color-charcoal)] p-4 sm:p-8 rounded-sm">
         <div className="animate-pulse text-[var(--color-silver)] font-light text-sm">
           Checking connection...
         </div>
@@ -313,26 +312,20 @@ export default function ConnectForm({
 
   if (existingConnection?.status === "pending") {
     return (
-      <div className="sticky top-24 border border-[var(--color-border)] bg-[var(--color-charcoal)] p-8 rounded-sm">
-        <h2 className="text-lg font-light text-[var(--color-ivory)] tracking-wide mb-4">
-          Connection requested
+      <div className="lg:sticky lg:top-24 border border-[var(--color-border)] bg-[var(--color-charcoal)] p-4 sm:p-8 rounded-sm">
+        <h2 className="text-lg font-light text-[var(--color-ivory)] tracking-wide">
+          Request pending
         </h2>
-        <p className="text-[var(--color-silver)] font-light text-sm">
-          You can send only one intro message before they respond. Your request is pending—you&apos;ll be able to chat once {escortName} accepts.
-        </p>
       </div>
     );
   }
 
   if (existingConnection?.status === "rejected") {
     return (
-      <div className="sticky top-24 border border-[var(--color-border)] bg-[var(--color-charcoal)] p-8 rounded-sm">
-        <h2 className="text-lg font-light text-[var(--color-ivory)] tracking-wide mb-4">
+      <div className="lg:sticky lg:top-24 border border-[var(--color-border)] bg-[var(--color-charcoal)] p-4 sm:p-8 rounded-sm">
+        <h2 className="text-lg font-light text-[var(--color-ivory)] tracking-wide">
           Request declined
         </h2>
-        <p className="text-[var(--color-silver)] font-light text-sm">
-          Your connection request was declined. You cannot chat with {escortName} for this request.
-        </p>
       </div>
     );
   }
@@ -341,19 +334,13 @@ export default function ConnectForm({
   const canConnect = credits >= CONNECT_CREDITS;
 
   return (
-    <div className="sticky top-24 border border-[var(--color-border)] bg-[var(--color-charcoal)] p-8 rounded-sm">
+    <div className="lg:sticky lg:top-24 border border-[var(--color-border)] bg-[var(--color-charcoal)] p-4 sm:p-8 rounded-sm">
       <h2 className="text-lg font-light text-[var(--color-ivory)] tracking-wide mb-4">
         Connect with {escortName}
       </h2>
-      <p className="text-[var(--color-silver)] font-light text-sm mb-2">
-        Send a connection request. You can include one intro message here—you&apos;ll be able to chat once they accept (1 credit per message).
-      </p>
-      <p className="text-xs text-[var(--color-muted)] mb-6">
-        Cost: <span className="text-[var(--color-champagne)]">{CONNECT_CREDITS} credits</span>. Your balance: <span className="font-medium">{credits} credits</span>.
-      </p>
       {!canConnect && (
         <div className="p-3 text-sm text-amber-200/90 border border-amber-500/30 bg-amber-500/10 rounded-sm mb-4">
-          You need {CONNECT_CREDITS} credits to connect. Get more credits from your account.
+          Not enough credits.
         </div>
       )}
       <form onSubmit={handleSubmit} className="space-y-5">
@@ -364,7 +351,7 @@ export default function ConnectForm({
         )}
         <div>
           <label className="block text-xs tracking-[0.15em] uppercase text-[var(--color-silver)] mb-2 font-normal">
-            Intro message (optional, one message until they accept)
+            Intro message (optional)
           </label>
           <textarea
             name="message"

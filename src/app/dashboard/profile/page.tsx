@@ -72,7 +72,7 @@ const ORIENTATION_OPTIONS = [
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, token, setUser, authReady, logout } = useAuth();
+  const { user, token, setUser, authReady, logout, logoutAll } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -109,6 +109,7 @@ export default function ProfilePage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [loggingOutAll, setLoggingOutAll] = useState(false);
 
   useEffect(() => {
     if (!authReady) return;
@@ -686,6 +687,39 @@ export default function ProfilePage() {
             </form>
 
             <div className="mt-16 pt-12 border-t border-[var(--color-border)]">
+              <h2 className="text-sm tracking-[0.2em] uppercase text-[var(--color-silver)] mb-4 font-normal">
+                Sessions
+              </h2>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => logout()}
+                  className="px-5 py-2.5 text-sm tracking-widest uppercase border border-[var(--color-border)] text-[var(--color-silver)] hover:text-[var(--color-ivory)] hover:bg-[var(--color-obsidian)] transition"
+                >
+                  Sign out
+                </button>
+                <button
+                  type="button"
+                  disabled={loggingOutAll}
+                  onClick={async () => {
+                    if (loggingOutAll) return;
+                    if (!confirm("Sign out from all devices?")) return;
+                    setLoggingOutAll(true);
+                    try {
+                      await logoutAll();
+                      router.replace("/login");
+                    } finally {
+                      setLoggingOutAll(false);
+                    }
+                  }}
+                  className="px-5 py-2.5 text-sm tracking-widest uppercase border border-red-500/60 text-red-300 hover:bg-red-500/10 transition disabled:opacity-50"
+                >
+                  {loggingOutAll ? "Signing out…" : "Sign out all devices"}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-16 pt-12 border-t border-[var(--color-border)]">
               <h2 className="text-sm font-light text-[var(--color-silver)] mb-1">Delete account</h2>
               <p className="text-xs text-[var(--color-muted)] mb-3">
                 Permanently delete your account. You will not be able to sign in again. Your email may be retained for our records.
@@ -1042,6 +1076,39 @@ export default function ProfilePage() {
                 {saving ? "Saving..." : profile ? "Save changes" : "Create profile"}
               </button>
             </form>
+
+            <div className="mt-16 pt-12 border-t border-[var(--color-border)]">
+              <h2 className="text-sm tracking-[0.2em] uppercase text-[var(--color-silver)] mb-4 font-normal">
+                Sessions
+              </h2>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => logout()}
+                  className="px-5 py-2.5 text-sm tracking-widest uppercase border border-[var(--color-border)] text-[var(--color-silver)] hover:text-[var(--color-ivory)] hover:bg-[var(--color-obsidian)] transition"
+                >
+                  Sign out
+                </button>
+                <button
+                  type="button"
+                  disabled={loggingOutAll}
+                  onClick={async () => {
+                    if (loggingOutAll) return;
+                    if (!confirm("Sign out from all devices?")) return;
+                    setLoggingOutAll(true);
+                    try {
+                      await logoutAll();
+                      router.replace("/login");
+                    } finally {
+                      setLoggingOutAll(false);
+                    }
+                  }}
+                  className="px-5 py-2.5 text-sm tracking-widest uppercase border border-red-500/60 text-red-300 hover:bg-red-500/10 transition disabled:opacity-50"
+                >
+                  {loggingOutAll ? "Signing out…" : "Sign out all devices"}
+                </button>
+              </div>
+            </div>
 
             <div className="mt-16 pt-12 border-t border-[var(--color-border)]">
               <h2 className="text-sm font-light text-[var(--color-silver)] mb-1">Delete account</h2>
