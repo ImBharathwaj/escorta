@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
 import { rateLimit } from "@/lib/rateLimit";
-
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
+import { signAccessToken } from "@/lib/jwt";
+import { newRefreshToken, setRefreshCookie, sha256, REFRESH_TOKEN_TTL_DAYS } from "@/lib/sessions";
 
 export async function POST(req: NextRequest) {
   const limited = rateLimit(req, { keyPrefix: "auth:login", limit: 12, windowMs: 60_000 });
@@ -39,11 +38,21 @@ export async function POST(req: NextRequest) {
       data: { lastLogin: new Date(), lastActiveAt: new Date(), updatedAt: new Date() },
     });
 
-    const token = jwt.sign(
-      { userId: user.id, role: user.role, email: user.email },
-      JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const refresh = newRefreshToken();
+    const refreshHash = sha256(refresh);
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
+    await prisma.userSession.create({
+      data: {
+        userId: user.id,
+        refreshTokenHash: refreshHash,
+        expiresAt,
+        userAgent: req.headers.get("user-agent") ?? undefined,
+        ipAddress: req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? undefined,
+      },
+    });
+    await setRefreshCookie(refresh);
+
+    const token = signAccessToken({ userId: user.id, role: user.role, email: user.email });
 
     return NextResponse.json({
       user: {

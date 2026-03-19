@@ -1,25 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
-
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
-
-function getAuth(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return null;
-  try {
-    return jwt.verify(auth.slice(7), JWT_SECRET) as { userId: string; role: string };
-  } catch {
-    return null;
-  }
-}
+import { requireAdmin } from "@/lib/auth";
 
 /** GET: Platform analytics (admin only). */
 export async function GET(req: NextRequest) {
-  const auth = getAuth(req);
-  if (!auth || auth.role !== "admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const auth = requireAdmin(req);
+  if (auth instanceof NextResponse) return auth;
 
   const [earnedAgg, spentAgg, txCount, liveCount, videoCallCount, reportCount] = await Promise.all([
     prisma.creditTransaction.aggregate({

@@ -27,6 +27,9 @@ export default async function CompanionsPage({
   const minAge = params.minAge;
   const maxAge = params.maxAge;
   const service = params.service;
+  const language = params.language;
+  const minPrice = params.minPrice;
+  const maxPrice = params.maxPrice;
 
   const where: Record<string, unknown> = { isActive: true };
   if (city) {
@@ -49,9 +52,39 @@ export default async function CompanionsPage({
       some: { service: { name: { contains: service, mode: "insensitive" } } },
     };
   }
+  if (language) {
+    where.languages = { has: language };
+  }
+  if (minPrice || maxPrice) {
+    where.pricePerHour = {};
+    if (minPrice) (where.pricePerHour as Record<string, number>).gte = parseInt(minPrice);
+    if (maxPrice) (where.pricePerHour as Record<string, number>).lte = parseInt(maxPrice);
+  }
+
+  const hasFilters = city || gender || verifiedFemale || minAge || maxAge || service || language || minPrice || maxPrice;
+
+  const spotlighted = hasFilters
+    ? []
+    : await prisma.escortProfile.findMany({
+        where: { isActive: true, isSpotlighted: true },
+        include: {
+          photos: {
+            where: { isApproved: true },
+            orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+            take: 10,
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 4,
+      });
+
+  const spotlightedIds = spotlighted.map((e) => e.id);
 
   const escorts = await prisma.escortProfile.findMany({
-    where,
+    where: {
+      ...where,
+      ...(spotlightedIds.length > 0 ? { id: { notIn: spotlightedIds } } : {}),
+    },
     include: {
       photos: {
         where: { isApproved: true },
@@ -84,8 +117,32 @@ export default async function CompanionsPage({
           <EscortFilters />
         </div>
 
+        {spotlighted.length > 0 && (
+          <div className="mb-14">
+            <p className="text-xs tracking-[0.3em] uppercase text-[var(--color-champagne)] mb-4">
+              Featured
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
+              {spotlighted.map((e) => (
+                <EscortCard
+                  key={e.id}
+                  id={e.id}
+                  aliasName={e.aliasName}
+                  age={e.age}
+                  city={e.city}
+                  gender={e.gender}
+                  isVerified={e.isVerified}
+                  isGenderVerified={e.isGenderVerified}
+                  photoId={e.photos[0]?.id ?? null}
+                  photoIds={e.photos.map((p) => p.id)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
-          {escorts.length === 0 ? (
+          {escorts.length === 0 && spotlighted.length === 0 ? (
             <div className="col-span-full text-center py-24 px-6">
               <p className="text-[var(--color-silver)] font-light text-lg mb-4">
                 No companions match your criteria yet.
@@ -118,7 +175,7 @@ export default async function CompanionsPage({
           )}
         </div>
 
-        <div className="mt-10 text-sm text-[var(--color-silver)] font-light">
+        <div className="mt-10 space-y-4 text-sm text-[var(--color-silver)] font-light">
           <p>
             Need inspiration for your next arrangement?{" "}
             <Link
@@ -127,8 +184,21 @@ export default async function CompanionsPage({
             >
               Visit our image gallery
             </Link>
-            .
           </p>
+          <div>
+            <p className="text-xs tracking-[0.15em] uppercase text-[var(--color-muted)] mb-2">Browse by service</p>
+            <div className="flex flex-wrap gap-2">
+              {["Dinner", "Travel", "Events", "GFE", "Massage", "Overnight", "Roleplay", "Couples"].map((s) => (
+                <Link
+                  key={s}
+                  href={`/services/${s.toLowerCase()}`}
+                  className="px-3 py-1 text-xs border border-[var(--color-border)] text-[var(--color-silver)] hover:border-[var(--color-champagne)]/50 hover:text-[var(--color-champagne)] transition rounded-sm"
+                >
+                  {s}
+                </Link>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>

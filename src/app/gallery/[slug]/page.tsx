@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { GalleryZoomGrid } from "@/components/GalleryZoomGrid";
+import { TrackPageView } from "@/components/TrackPageView";
 
 export const revalidate = 60;
 
@@ -97,6 +98,7 @@ export default async function GalleryDetailPage({
           </p>
         </div>
 
+        <TrackPageView event="gallery_view" props={{ slug: gallery.slug }} />
         <GalleryZoomGrid
           images={gallery.images.map((img) => ({
             id: img.id,
@@ -128,11 +130,21 @@ export default async function GalleryDetailPage({
               "@type": "CollectionPage",
               name: gallery.h1,
               description: gallery.description,
-              hasPart: gallery.images.map((img) => ({
-                "@type": "ImageObject",
-                contentUrl: `/api/media?src=${encodeURIComponent(img.src)}`,
-                caption: img.caption ?? img.alt,
-              })),
+              url: `${process.env.APP_URL || "https://escorta.example.com"}/gallery/${gallery.slug}`,
+              mainEntity: {
+                "@type": "ItemList",
+                numberOfItems: gallery.images.length,
+                itemListElement: gallery.images.map((img, i) => ({
+                  "@type": "ListItem",
+                  position: i + 1,
+                  item: {
+                    "@type": "ImageObject",
+                    contentUrl: `${process.env.APP_URL || "https://escorta.example.com"}/api/media?src=${encodeURIComponent(img.src)}`,
+                    caption: img.caption ?? img.alt,
+                    name: img.alt,
+                  },
+                })),
+              },
             }),
           }}
         />

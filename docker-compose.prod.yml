@@ -1,0 +1,84 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: escorta
+      POSTGRES_USER: escorta
+      POSTGRES_PASSWORD: escorta_password_change_me
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U escorta -d escorta"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  pgbouncer:
+    image: edoburu/pgbouncer:1.22.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: escorta
+      DB_PASSWORD: escorta_password_change_me
+      DB_NAME: escorta
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 500
+      DEFAULT_POOL_SIZE: 50
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits
+    ports:
+      - "6432:6432"
+
+  minio:
+    image: minio/minio:RELEASE.2025-02-28T21-50-25Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  app:
+    build: .
+    depends_on:
+      pgbouncer:
+        condition: service_started
+      minio:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      # App URL should be your public HTTPS domain
+      APP_URL: https://example.com
+      # IMPORTANT: use PgBouncer for Prisma connections
+      DATABASE_URL: postgresql://escorta:escorta_password_change_me@pgbouncer:6432/escorta?schema=public
+      JWT_SECRET: change-me
+      # Refresh/field encryption keys
+      FIELD_ENCRYPTION_KEY: "" # base64 32 bytes
+      SENTRY_DSN: ""
+      NEXT_PUBLIC_SENTRY_DSN: ""
+      # MinIO
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: escort-images
+      # LiveKit
+      LIVEKIT_URL: ""
+      LIVEKIT_API_KEY: ""
+      LIVEKIT_API_SECRET: ""
+      NEXT_PUBLIC_LIVEKIT_URL: ""
+      # Razorpay
+      RAZORPAY_KEY_ID: ""
+      RAZORPAY_KEY_SECRET: ""
+      NEXT_PUBLIC_RAZORPAY_KEY_ID: ""
+    ports:
+      - "3000:3000"
+
+volumes:
+  pg_data:
+  minio_data:
+

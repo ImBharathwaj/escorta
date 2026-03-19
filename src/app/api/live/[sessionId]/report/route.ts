@@ -1,26 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
-
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
-
-function getUser(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return null;
-  try {
-    return jwt.verify(auth.slice(7), JWT_SECRET) as { userId: string; role: string };
-  } catch {
-    return null;
-  }
-}
+import { requireAnyRole } from "@/lib/auth";
+import { encryptOptional } from "@/lib/fieldEncryption";
 
 /** POST: Report this live session (client or participant). */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
-  const payload = getUser(req);
-  if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const payload = requireAnyRole(req, ["client", "escort", "admin"]);
+  if (payload instanceof NextResponse) return payload;
 
   const { sessionId } = await params;
   const session = await prisma.liveSession.findUnique({
@@ -38,12 +27,14 @@ export async function POST(
     });
     isViewer = !!viewer;
   }
-  if (!isCompanion && !isViewer) {
+  const isAdmin = payload.role === "admin";
+  if (!isCompanion && !isViewer && !isAdmin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const body = await req.json().catch(() => ({}));
-  const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 1000) : null;
+  const reasonRaw = typeof body.reason === "string" ? body.reason.trim().slice(0, 1000) : null;
+  const reason = reasonRaw ? encryptOptional(reasonRaw) : null;
 
   // Idempotent: one report per user per session
   const existing = await prisma.sessionReport.findFirst({

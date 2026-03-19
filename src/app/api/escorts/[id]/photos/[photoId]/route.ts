@@ -1,19 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
 import { deletePhotoByStoredUrl } from "@/lib/minio";
-
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
-
-function getUser(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return null;
-  try {
-    return jwt.verify(auth.slice(7), JWT_SECRET) as { userId: string; role: string };
-  } catch {
-    return null;
-  }
-}
+import { requireAnyRole } from "@/lib/auth";
+import { requireEscortOwner } from "@/lib/authorization";
 
 async function getEscortAndPhoto(escortId: string, photoId: string) {
   const escort = await prisma.escortProfile.findUnique({
@@ -38,19 +27,16 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; photoId: string }> }
 ) {
-  const payload = getUser(req);
-  if (!payload) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const payload = requireAnyRole(req, ["escort", "admin"]);
+  if (payload instanceof NextResponse) return payload;
 
   const { id: escortId, photoId } = await params;
+  const escortAccess = await requireEscortOwner(payload, escortId);
+  if (escortAccess instanceof NextResponse) return escortAccess;
   const { escort, photo } = await getEscortAndPhoto(escortId, photoId);
 
   if (!escort || !photo) {
     return NextResponse.json({ error: "Photo not found" }, { status: 404 });
-  }
-  if (escort.userId !== payload.userId && payload.role !== "admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const contentType = req.headers.get("content-type") || "";
@@ -96,19 +82,16 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; photoId: string }> }
 ) {
-  const payload = getUser(req);
-  if (!payload) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const payload = requireAnyRole(req, ["escort", "admin"]);
+  if (payload instanceof NextResponse) return payload;
 
   const { id: escortId, photoId } = await params;
+  const escortAccess = await requireEscortOwner(payload, escortId);
+  if (escortAccess instanceof NextResponse) return escortAccess;
   const { escort, photo } = await getEscortAndPhoto(escortId, photoId);
 
   if (!escort || !photo) {
     return NextResponse.json({ error: "Photo not found" }, { status: 404 });
-  }
-  if (escort.userId !== payload.userId && payload.role !== "admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   try {

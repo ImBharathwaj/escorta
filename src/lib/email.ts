@@ -61,6 +61,46 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
   return await sendEmail({ to, subject, html });
 }
 
+export async function sendConnectionRequestEmail(to: string, clientName: string): Promise<boolean> {
+  const appUrl = process.env.APP_URL || "https://escorta.example.com";
+  const subject = "New connection request";
+  const html = `
+    <p><strong>${clientName}</strong> wants to connect with you on Escorta.</p>
+    <p><a href="${appUrl}/dashboard" style="color:#c9a227;">View request on your dashboard</a></p>
+  `;
+  return await sendEmail({ to, subject, html });
+}
+
+export async function sendConnectionAcceptedEmail(to: string, escortName: string): Promise<boolean> {
+  const appUrl = process.env.APP_URL || "https://escorta.example.com";
+  const subject = `${escortName} accepted your connection`;
+  const html = `
+    <p><strong>${escortName}</strong> accepted your connection request.</p>
+    <p>You can now chat with them and request video calls.</p>
+    <p><a href="${appUrl}/dashboard" style="color:#c9a227;">Go to dashboard</a></p>
+  `;
+  return await sendEmail({ to, subject, html });
+}
+
+export async function sendNewMessageEmail(to: string, senderName: string): Promise<boolean> {
+  const appUrl = process.env.APP_URL || "https://escorta.example.com";
+  const subject = `New message from ${senderName}`;
+  const html = `
+    <p><strong>${senderName}</strong> sent you a new message on Escorta.</p>
+    <p><a href="${appUrl}/dashboard" style="color:#c9a227;">View messages</a></p>
+  `;
+  return await sendEmail({ to, subject, html });
+}
+
+export async function sendEarningsEmail(to: string, amount: number, eventType: string, fromName: string): Promise<boolean> {
+  const subject = `You earned ${amount} credit${amount !== 1 ? "s" : ""}`;
+  const html = `
+    <p>You earned <strong>${amount} credit${amount !== 1 ? "s" : ""}</strong> from a ${eventType} by <strong>${fromName}</strong>.</p>
+    <p>Check your earnings in the dashboard.</p>
+  `;
+  return await sendEmail({ to, subject, html });
+}
+
 export async function sendSupportEmail(opts: {
   fromEmail?: string;
   category?: string;

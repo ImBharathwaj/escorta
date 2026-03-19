@@ -7,7 +7,8 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: "*",
-        allow: ["/", "/gallery", "/gallery/"],
+        allow: ["/", "/companions", "/companions/", "/gallery", "/gallery/", "/escorts/", "/services/", "/terms", "/privacy", "/guidelines"],
+        disallow: ["/api/", "/admin/", "/dashboard/", "/login", "/register", "/onboarding", "/settings", "/video-call/", "/live/go", "/sexter/"],
       },
     ],
     sitemap: `${baseUrl}/sitemap.xml`,

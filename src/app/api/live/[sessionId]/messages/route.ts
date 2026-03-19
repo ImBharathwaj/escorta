@@ -1,18 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
-
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
-
-function getUser(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return null;
-  try {
-    return jwt.verify(auth.slice(7), JWT_SECRET) as { userId: string; role: string };
-  } catch {
-    return null;
-  }
-}
+import { requireAnyRole } from "@/lib/auth";
+import { rateLimit } from "@/lib/rateLimit";
 
 async function canAccessSession(sessionId: string, userId: string, role: string): Promise<boolean> {
   const session = await prisma.liveSession.findUnique({
@@ -20,6 +9,7 @@ async function canAccessSession(sessionId: string, userId: string, role: string)
     include: { escort: { select: { userId: true } } },
   });
   if (!session) return false;
+  if (role === "admin") return true;
   if (role === "escort" && session.escort.userId === userId) return true;
   if (role === "client") {
     const viewer = await prisma.liveSessionViewer.findUnique({
@@ -35,8 +25,11 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
-  const payload = getUser(req);
-  if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const limited = rateLimit(req, { keyPrefix: "live:messages:get", limit: 180, windowMs: 60_000 });
+  if (limited) return limited;
+
+  const payload = requireAnyRole(req, ["client", "escort", "admin"]);
+  if (payload instanceof NextResponse) return payload;
 
   const { sessionId } = await params;
   const allowed = await canAccessSession(sessionId, payload.userId, payload.role);
@@ -66,8 +59,11 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
-  const payload = getUser(req);
-  if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const limited = rateLimit(req, { keyPrefix: "live:messages:post", limit: 30, windowMs: 60_000 });
+  if (limited) return limited;
+
+  const payload = requireAnyRole(req, ["client", "escort", "admin"]);
+  if (payload instanceof NextResponse) return payload;
 
   const { sessionId } = await params;
   const allowed = await canAccessSession(sessionId, payload.userId, payload.role);

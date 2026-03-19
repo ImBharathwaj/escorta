@@ -108,7 +108,7 @@ export default function ChatPage() {
         .then((data) => setActiveVideoCall(data.session ?? null))
         .catch(() => setActiveVideoCall(null));
     fetchActive();
-    const interval = setInterval(fetchActive, 4000);
+    const interval = setInterval(fetchActive, document.hidden ? 15000 : 6000);
     return () => clearInterval(interval);
   }, [token]);
 
@@ -120,7 +120,7 @@ export default function ChatPage() {
         .then((data) => setPendingVideoRequests(data.requests ?? []))
         .catch(() => setPendingVideoRequests([]));
     fetchRequests();
-    const interval = setInterval(fetchRequests, 4000);
+    const interval = setInterval(fetchRequests, document.hidden ? 15000 : 6000);
     return () => clearInterval(interval);
   }, [token, user?.role]);
 

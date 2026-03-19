@@ -1,25 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
 import { getSignedImageUrl } from "@/lib/minio";
-
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
-
-function getUser(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return null;
-  try {
-    return jwt.verify(auth.slice(7), JWT_SECRET) as { userId: string };
-  } catch {
-    return null;
-  }
-}
+import { requireAuth } from "@/lib/auth";
+import { decryptOptional, encryptOptional } from "@/lib/fieldEncryption";
 
 export async function GET(req: NextRequest) {
-  const payload = getUser(req);
-  if (!payload) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const payload = requireAuth(req);
+  if (payload instanceof NextResponse) return payload;
   const user = await prisma.user.findUnique({
     where: { id: payload.userId },
     select: {
@@ -34,6 +21,8 @@ export async function GET(req: NextRequest) {
       orientation: true,
       preferencesNotes: true,
       preferredLanguages: true,
+      preferredCity: true,
+      onboardingComplete: true,
       createdAt: true,
       clientPreferredServices: {
         select: { adultService: { select: { name: true } } },
@@ -50,8 +39,10 @@ export async function GET(req: NextRequest) {
   const preferredServices = (clientPreferredServices ?? []).map(
     (c) => c.adultService.name
   );
+  const preferencesNotes = decryptOptional(rest.preferencesNotes);
   return NextResponse.json({
     ...rest,
+    preferencesNotes,
     avatarSignedUrl,
     preferredServices,
     preferredLanguages: rest.preferredLanguages ?? [],
@@ -59,10 +50,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const payload = getUser(req);
-  if (!payload) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const payload = requireAuth(req);
+  if (payload instanceof NextResponse) return payload;
   const body = await req.json().catch(() => ({}));
   const {
     display_name,
@@ -112,6 +101,11 @@ export async function PATCH(req: NextRequest) {
       ? preferred_languages.map((s: unknown) => String(s).trim()).filter(Boolean)
       : undefined;
 
+  const nextPrefs =
+    preferences_notes !== undefined
+      ? (preferences_notes?.trim() ? encryptOptional(String(preferences_notes).trim()) : null)
+      : undefined;
+
   await prisma.user.update({
     where: { id: payload.userId },
     data: {
@@ -119,9 +113,7 @@ export async function PATCH(req: NextRequest) {
       ...(email !== undefined && { email: email?.trim() || null }),
       ...(phone !== undefined && { phone: phone?.trim() || null }),
       ...(orientation !== undefined && { orientation: orientation?.trim() || null }),
-      ...(preferences_notes !== undefined && {
-        preferencesNotes: preferences_notes?.trim() || null,
-      }),
+      ...(nextPrefs !== undefined && { preferencesNotes: nextPrefs }),
       ...(languagesArray !== undefined && { preferredLanguages: languagesArray }),
     },
   });
@@ -156,8 +148,10 @@ export async function PATCH(req: NextRequest) {
   const avatarSignedUrl = rest.avatarUrl
     ? await getSignedImageUrl(rest.avatarUrl).catch(() => null)
     : null;
+  const preferencesNotes = decryptOptional(rest.preferencesNotes);
   return NextResponse.json({
     ...rest,
+    preferencesNotes,
     preferredServices,
     preferredLanguages: rest.preferredLanguages ?? [],
     avatarSignedUrl,

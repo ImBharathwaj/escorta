@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { decryptOptional } from "@/lib/fieldEncryption";
 
 /**
  * Download my data (basic JSON export).
@@ -62,6 +63,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  const decryptedUser = {
+    ...user,
+    preferencesNotes: decryptOptional(user.preferencesNotes),
+  };
+
   const creditTransactions = await prisma.creditTransaction.findMany({
     where: { userId: auth.userId },
     orderBy: { createdAt: "desc" },
@@ -95,7 +101,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     exportedAt: new Date().toISOString(),
-    user,
+    user: decryptedUser,
     creditTransactions,
     notifications,
   });

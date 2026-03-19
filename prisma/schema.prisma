@@ -27,6 +27,12 @@ model User {
   orientation      String?  // e.g. straight | gay | bisexual | other
   preferencesNotes String?  @map("preferences_notes")
   preferredLanguages String[] @default([]) @map("preferred_languages") // e.g. ["en", "es"]
+  preferredCity    String?  @map("preferred_city")
+  onboardingComplete Boolean @default(false) @map("onboarding_complete")
+  // Notification preferences
+  notifyEmailConnections Boolean @default(true) @map("notify_email_connections")
+  notifyEmailMessages    Boolean @default(true) @map("notify_email_messages")
+  notifyEmailEarnings    Boolean @default(true) @map("notify_email_earnings")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
@@ -48,6 +54,27 @@ model User {
   sessionReports      SessionReport[]
   blocksInitiated     UserBlock[] @relation("BlocksInitiated")
   blocksReceived      UserBlock[] @relation("BlocksReceived")
+  sessions            UserSession[]
+  moderationActions   ModerationAction[]
+  adminNotesAbout     AdminNote[]  @relation("AdminNoteTarget")
+  adminNotesAuthored  AdminNote[]  @relation("AdminNoteAuthor")
+}
+
+model UserSession {
+  id               String    @id @default(uuid())
+  userId           String    @map("user_id")
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash String    @unique @map("refresh_token_hash")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  lastUsedAt       DateTime? @map("last_used_at")
+  expiresAt        DateTime  @map("expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+  userAgent        String?   @map("user_agent") @db.Text
+  ipAddress        String?   @map("ip_address")
+
+  @@index([userId])
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
 }
 
 model LiveSession {
@@ -79,6 +106,8 @@ model LiveSessionViewer {
   @@unique([liveSessionId, clientId])
   @@index([liveSessionId])
   @@index([clientId])
+  @@index([liveSessionId, leftAt])
+  @@index([watchExpiresAt])
 }
 
 model LiveSessionMessage {
@@ -92,6 +121,7 @@ model LiveSessionMessage {
   deletedAt     DateTime?   @map("deleted_at") // moderation: hidden/deleted (companion or admin)
 
   @@index([liveSessionId])
+  @@index([liveSessionId, createdAt])
 }
 
 model SessionReport {
@@ -122,6 +152,7 @@ model VideoCallRequest {
   @@index([clientId])
   @@index([escortId])
   @@index([escortId, status])
+  @@index([status, createdAt])
 }
 
 model VideoCallSession {
@@ -138,6 +169,7 @@ model VideoCallSession {
 
   @@index([clientId])
   @@index([escortId])
+  @@index([status, expiresAt])
 }
 
 model CreditTransaction {
@@ -214,6 +246,7 @@ model EscortProfile {
   isGenderVerified Boolean  @default(false) @map("is_gender_verified") // admin-verified gender
   isActive         Boolean  @default(true) @map("is_active")
   isPremium        Boolean  @default(false) @map("is_premium")
+  isSpotlighted    Boolean  @default(false) @map("is_spotlighted")
   languages        String[] @default([]) // e.g. ["en", "es", "fr"]
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
@@ -332,8 +365,30 @@ model EscortPhoto {
   imageUrl   String   @map("image_url")
   isPrimary  Boolean  @default(false) @map("is_primary")
   isApproved Boolean  @default(false) @map("is_approved")
+  reviewStatus String @default("pending") @map("review_status") // pending | approved | rejected
+  reviewedAt   DateTime? @map("reviewed_at")
+  reviewedByUserId String? @map("reviewed_by_user_id")
+  reviewReason String? @map("review_reason") @db.Text
   allowGallery Boolean @default(false) @map("allow_gallery")
   createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([escortId])
+  @@index([reviewStatus, createdAt])
+}
+
+model ModerationAction {
+  id         String   @id @default(uuid())
+  actorUserId String @map("actor_user_id")
+  actor      User     @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
+  actionType String   @map("action_type") // photo_approve | photo_reject | report_resolve | ban_user | unban_user | message_hide | sexter_message_hide
+  targetType String   @map("target_type") // escort_photo | session_report | user | message | sexter_message
+  targetId   String   @map("target_id")
+  reason     String?  @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([actorUserId])
+  @@index([targetType, targetId])
+  @@index([createdAt])
 }
 
 model EscortAvailability {
@@ -360,6 +415,9 @@ model Booking {
 
   messages       Message[]
   sexterSessions SexterSession[]
+
+  @@index([clientId, status])
+  @@index([escortId, status])
 }
 
 model Message {
@@ -371,6 +429,8 @@ model Message {
   sender    User     @relation(fields: [senderId], references: [id])
   createdAt DateTime @default(now()) @map("created_at")
   deletedAt DateTime? @map("deleted_at")
+
+  @@index([bookingId, createdAt])
 }
 
 // Session-based sexter: standalone from connections. clientId+escortId for new flow; bookingId legacy.
@@ -386,6 +446,9 @@ model SexterSession {
   expiresAt DateTime       @default(now()) @map("expires_at")
   endedAt   DateTime?      @map("ended_at")
   messages  SexterMessage[]
+
+  @@index([clientId, expiresAt])
+  @@index([escortId, expiresAt])
 }
 
 model SexterMessage {
@@ -399,6 +462,8 @@ model SexterMessage {
   attachmentType  String?       @map("attachment_type") // "image" | "video"
   createdAt       DateTime      @default(now()) @map("created_at")
   deletedAt       DateTime?     @map("deleted_at")
+
+  @@index([sexterSessionId, createdAt])
 }
 
 // Stores email of deleted accounts for company records; not exposed to clients.
@@ -420,4 +485,21 @@ model UserBlock {
 
   @@id([blockerId, blockedId])
   @@index([blockedId])
+}
+
+model AdminNote {
+  id           String   @id @default(uuid())
+  targetUserId String   @map("target_user_id")
+  targetUser   User     @relation("AdminNoteTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  authorUserId String   @map("author_user_id")
+  author       User     @relation("AdminNoteAuthor", fields: [authorUserId], references: [id], onDelete: Cascade)
+  targetType   String   @map("target_type") // user | booking | video_call | live_session | sexter_session
+  targetRefId  String?  @map("target_ref_id")
+  content      String   @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([targetUserId])
+  @@index([targetType, targetRefId])
+  @@index([authorUserId])
+  @@index([createdAt])
 }

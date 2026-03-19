@@ -108,18 +108,15 @@ export async function PATCH(
   if (adult_services !== undefined && Array.isArray(adult_services)) {
     await prisma.escortAdultService.deleteMany({ where: { escortId: id } });
     if (adult_services.length > 0) {
-      const names = [...new Set(adult_services)].filter((n) => typeof n === "string" && n.trim());
-      const serviceIds: string[] = [];
-      for (const name of names) {
-        const trimmed = name.trim();
-        if (!trimmed) continue;
-        const service = await prisma.adultService.upsert({
-          where: { name: trimmed },
-          update: {},
-          create: { name: trimmed },
-        });
-        serviceIds.push(service.id);
-      }
+      const names = [...new Set(adult_services)]
+        .filter((n) => typeof n === "string" && n.trim())
+        .map((n: string) => n.trim());
+      const services = await Promise.all(
+        names.map((name) =>
+          prisma.adultService.upsert({ where: { name }, update: {}, create: { name } })
+        )
+      );
+      const serviceIds = services.map((s) => s.id);
       if (serviceIds.length > 0) {
         await prisma.escortAdultService.createMany({
           data: serviceIds.map((adultServiceId) => ({ escortId: id, adultServiceId })),

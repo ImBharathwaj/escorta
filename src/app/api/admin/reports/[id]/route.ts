@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth";
+import { encryptOptional } from "@/lib/fieldEncryption";
 
 /**
  * PATCH /api/admin/reports/[id]
@@ -31,6 +32,15 @@ export async function PATCH(
         where: { id: banUserId },
         data: { isBanned: true, isActive: false },
       });
+      await prisma.moderationAction.create({
+        data: {
+          actorUserId: auth.userId,
+          actionType: "ban_user",
+          targetType: "user",
+          targetId: banUserId,
+          reason: encryptOptional(`Triggered from report ${id}`),
+        },
+      });
     } catch (e) {
       console.error("[admin:reports:ban_user] error", e);
       return NextResponse.json({ error: "Failed to ban user" }, { status: 500 });
@@ -41,6 +51,15 @@ export async function PATCH(
   if (action === "mark_resolved") {
     // For now we simply delete the report as "resolved"; history is in logs.
     try {
+      await prisma.moderationAction.create({
+        data: {
+          actorUserId: auth.userId,
+          actionType: "report_resolve",
+          targetType: "session_report",
+          targetId: id,
+          reason: encryptOptional("Marked resolved"),
+        },
+      });
       await prisma.sessionReport.delete({ where: { id } });
     } catch (e) {
       console.error("[admin:reports:mark_resolved] error", e);

@@ -1,30 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
 import { TIP_MIN_CREDITS, TIP_MAX_CREDITS } from "@/lib/credits";
 import { recordTipAndEarn } from "@/lib/creditLedger";
-
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
-
-function getUser(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return null;
-  try {
-    return jwt.verify(auth.slice(7), JWT_SECRET) as { userId: string; role: string };
-  } catch {
-    return null;
-  }
-}
+import { requireClient } from "@/lib/auth";
+import { requireBookingAccess, requireLiveSessionAccess, requireVideoCallAccess } from "@/lib/authorization";
+import { sendEarningsEmail } from "@/lib/email";
 
 type TipContext = "booking" | "sexter_session" | "live_session" | "video_call";
 
 /** POST: Send a tip (client only). Body: { amount: number, context: TipContext, referenceId: string } */
 export async function POST(req: NextRequest) {
-  const payload = getUser(req);
-  if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (payload.role !== "client") {
-    return NextResponse.json({ error: "Only clients can send tips" }, { status: 403 });
-  }
+  const payload = requireClient(req);
+  if (payload instanceof NextResponse) return payload;
 
   const body = await req.json().catch(() => ({}));
   const rawAmount = typeof body.amount === "number" ? body.amount : Number(body.amount);
@@ -46,11 +33,13 @@ export async function POST(req: NextRequest) {
   let referenceType: "booking" | "sexter_session" | "live_session" | "video_call" = context as any;
 
   if (context === "booking") {
-    const booking = await prisma.booking.findFirst({
-      where: { id: referenceId, clientId: payload.userId, status: "accepted" },
-      select: { escortId: true },
-    });
-    if (!booking) return NextResponse.json({ error: "Booking not found or access denied" }, { status: 404 });
+    const bookingAccess = await requireBookingAccess(payload, referenceId);
+    if (bookingAccess instanceof NextResponse) return bookingAccess;
+    if (bookingAccess.clientId !== payload.userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    const booking = await prisma.booking.findUnique({ where: { id: referenceId }, select: { escortId: true, status: true } });
+    if (!booking || booking.status !== "accepted") return NextResponse.json({ error: "Booking not found or not active" }, { status: 404 });
     escortId = booking.escortId;
   } else if (context === "sexter_session") {
     const session = await prisma.sexterSession.findFirst({
@@ -60,19 +49,21 @@ export async function POST(req: NextRequest) {
     if (!session?.escortId) return NextResponse.json({ error: "Sexter session not found or access denied" }, { status: 404 });
     escortId = session.escortId;
   } else if (context === "live_session") {
-    const viewer = await prisma.liveSessionViewer.findFirst({
-      where: { liveSessionId: referenceId, clientId: payload.userId },
+    const liveAccess = await requireLiveSessionAccess(payload, referenceId);
+    if (liveAccess instanceof NextResponse) return liveAccess;
+    const viewer = await prisma.liveSessionViewer.findUnique({
+      where: { liveSessionId_clientId: { liveSessionId: referenceId, clientId: payload.userId } },
       include: { liveSession: { select: { escortId: true } } },
     });
     if (!viewer?.liveSession) return NextResponse.json({ error: "Live session not found or access denied" }, { status: 404 });
     escortId = viewer.liveSession.escortId;
   } else {
     // video_call
-    const session = await prisma.videoCallSession.findFirst({
-      where: { id: referenceId, clientId: payload.userId, status: "active" },
-      select: { escortId: true },
-    });
-    if (!session) return NextResponse.json({ error: "Video call not found or access denied" }, { status: 404 });
+    const vcAccess = await requireVideoCallAccess(payload, referenceId);
+    if (vcAccess instanceof NextResponse) return vcAccess;
+    if (vcAccess.clientId !== payload.userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const session = await prisma.videoCallSession.findUnique({ where: { id: referenceId }, select: { escortId: true, status: true } });
+    if (!session || session.status !== "active") return NextResponse.json({ error: "Video call not found or ended" }, { status: 404 });
     escortId = session.escortId;
   }
 
@@ -124,6 +115,14 @@ export async function POST(req: NextRequest) {
       relatedUserId: payload.userId,
     },
   });
+
+  const escortUser = await prisma.user.findUnique({
+    where: { id: escortUserId },
+    select: { email: true, notifyEmailEarnings: true },
+  });
+  if (escortUser?.email && escortUser.notifyEmailEarnings) {
+    sendEarningsEmail(escortUser.email, amount, "tip", clientLabel).catch(() => {});
+  }
 
   return NextResponse.json({ ok: true, amount });
 }

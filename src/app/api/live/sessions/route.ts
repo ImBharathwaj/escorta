@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+export const revalidate = 5;
+
 /** GET: List active live sessions for "Live now" page. */
 export async function GET(req: NextRequest) {
   const sessions = await prisma.liveSession.findMany({
@@ -24,5 +26,12 @@ export async function GET(req: NextRequest) {
     viewerCount: s.viewers.length,
   }));
 
-  return NextResponse.json({ sessions: list });
+  return NextResponse.json(
+    { sessions: list },
+    {
+      headers: {
+        "Cache-Control": "public, s-maxage=5, stale-while-revalidate=30",
+      },
+    }
+  );
 }

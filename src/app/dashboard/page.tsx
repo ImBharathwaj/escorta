@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { BlurredImage } from "@/components/BlurredImage";
+import { EscortProfileChecklist } from "@/components/EscortProfileChecklist";
 
 type Booking = {
   id: string;
@@ -38,6 +39,7 @@ function DashboardContent({ searchParams }: { searchParams: ReadonlyURLSearchPar
   } | null>(null);
   const [premiumSubmitting, setPremiumSubmitting] = useState(false);
   const [premiumMessage, setPremiumMessage] = useState("");
+  const [recommended, setRecommended] = useState<{ id: string; aliasName: string; age: number | null; city: string | null; photoId: string | null }[]>([]);
 
   useEffect(() => {
     if (!authReady) return;
@@ -48,12 +50,15 @@ function DashboardContent({ searchParams }: { searchParams: ReadonlyURLSearchPar
     setLoading(false);
   }, [token, authReady, router]);
 
-  // Refresh user (and credits) once when client opens dashboard so balance is up to date
   const refreshedRef = useRef(false);
   useEffect(() => {
     if (!token || user?.role !== "client" || refreshedRef.current) return;
     refreshedRef.current = true;
     refreshUser();
+    fetch("/api/companions/recommended", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d.recommended)) setRecommended(d.recommended); })
+      .catch(() => {});
   }, [token, user?.role, refreshUser]);
 
   const fetchBookings = useCallback(() => {
@@ -207,6 +212,8 @@ function DashboardContent({ searchParams }: { searchParams: ReadonlyURLSearchPar
             </Link>
           </div>
         )}
+
+        {user?.role === "escort" && <EscortProfileChecklist token={token} />}
 
         {user?.role === "escort" && (
           <div className="mb-10 p-6 border border-[var(--color-border)] bg-[var(--color-charcoal)]">
@@ -502,14 +509,39 @@ function DashboardContent({ searchParams }: { searchParams: ReadonlyURLSearchPar
         {user?.role === "client" && (
           <div className="border border-[var(--color-border)] bg-[var(--color-charcoal)] p-6 mb-6">
             <h3 className="text-sm font-light text-[var(--color-silver)] mb-1">Credits</h3>
-            <p className="text-2xl font-light text-[var(--color-champagne)] mb-2">{user?.credits ?? 0} credits</p>
-            <p className="text-xs text-[var(--color-muted)] mb-3">Use credits to connect with companions and send messages.</p>
+            <p className="text-2xl font-light text-[var(--color-champagne)] mb-3">{user?.credits ?? 0} credits</p>
             <Link
               href="/membership"
               className="text-sm tracking-widest uppercase text-[var(--color-champagne)] hover:text-[var(--color-champagne-light)] transition"
             >
               Get more credits
             </Link>
+          </div>
+        )}
+
+        {user?.role === "client" && recommended.length > 0 && (
+          <div className="mb-10 p-6 border border-[var(--color-border)] bg-[var(--color-charcoal)]">
+            <h2 className="text-lg font-light text-[var(--color-ivory)] tracking-wide mb-1">Recommended for you</h2>
+            <p className="text-sm text-[var(--color-silver)] font-light mb-4">Based on your preferences and activity</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {recommended.map((r) => (
+                <Link key={r.id} href={`/escorts/${r.id}`} className="group block">
+                  <div className="aspect-[3/4] bg-[var(--color-obsidian)] rounded overflow-hidden mb-2 border border-[var(--color-border)] group-hover:border-[var(--color-champagne)]/50 transition">
+                    {r.photoId ? (
+                      <BlurredImage photoId={r.photoId} alt={r.aliasName} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-[var(--color-muted)] text-2xl">—</div>
+                    )}
+                  </div>
+                  <p className="text-sm text-[var(--color-ivory)] font-light truncate group-hover:text-[var(--color-champagne)] transition">
+                    {r.aliasName}
+                  </p>
+                  <p className="text-xs text-[var(--color-muted)]">
+                    {[r.age, r.city].filter(Boolean).join(" · ") || "—"}
+                  </p>
+                </Link>
+              ))}
+            </div>
           </div>
         )}
 
@@ -540,6 +572,12 @@ function DashboardContent({ searchParams }: { searchParams: ReadonlyURLSearchPar
             className="inline-block px-6 py-3 text-sm tracking-widest uppercase border border-[var(--color-border)] text-[var(--color-silver)] hover:text-[var(--color-ivory)] hover:border-[var(--color-silver)]/50 transition"
           >
             {user?.role === "escort" ? "Credits earned" : "Credit usage"}
+          </Link>
+          <Link
+            href="/settings"
+            className="inline-block px-6 py-3 text-sm tracking-widest uppercase border border-[var(--color-border)] text-[var(--color-silver)] hover:text-[var(--color-ivory)] hover:border-[var(--color-silver)]/50 transition"
+          >
+            Notification settings
           </Link>
         </div>
 

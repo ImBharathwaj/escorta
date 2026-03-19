@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { prisma } from "@/lib/prisma";
+import { sendConnectionAcceptedEmail } from "@/lib/email";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 
@@ -60,6 +61,34 @@ export async function PATCH(
     where: { id },
     data: { status },
   });
+
+  if (status === "accepted") {
+    const escortUser = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { escortProfile: { select: { aliasName: true } } },
+    });
+    const clientUser = await prisma.user.findUnique({
+      where: { id: booking.clientId },
+      select: { email: true, notifyEmailConnections: true },
+    });
+
+    const escortName = escortUser?.escortProfile?.aliasName || "A companion";
+
+    await prisma.notification.create({
+      data: {
+        userId: booking.clientId,
+        type: "connection_accepted",
+        title: `${escortName} accepted your connection request`,
+        referenceType: "booking",
+        referenceId: booking.id,
+        relatedUserId: payload.userId,
+      },
+    });
+
+    if (clientUser?.email && clientUser.notifyEmailConnections) {
+      sendConnectionAcceptedEmail(clientUser.email, escortName).catch(() => {});
+    }
+  }
 
   return NextResponse.json({ ok: true, status });
 }

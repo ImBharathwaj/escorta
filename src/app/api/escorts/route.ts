@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 
+export const revalidate = 60;
+
 function getUser(req: NextRequest) {
   const auth = req.headers.get("authorization");
   if (!auth?.startsWith("Bearer ")) return null;
@@ -82,7 +84,11 @@ export async function GET(req: NextRequest) {
     primary_photo: e.photos[0]?.imageUrl ?? null,
   }));
 
-  return NextResponse.json(result);
+  return NextResponse.json(result, {
+    headers: {
+      "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+    },
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -127,18 +133,15 @@ export async function POST(req: NextRequest) {
   }
 
   if (adult_services && Array.isArray(adult_services) && adult_services.length > 0) {
-    const names = [...new Set(adult_services)].filter((n) => typeof n === "string" && n.trim());
-    const serviceIds: string[] = [];
-    for (const name of names) {
-      const trimmed = name.trim();
-      if (!trimmed) continue;
-      const service = await prisma.adultService.upsert({
-        where: { name: trimmed },
-        update: {},
-        create: { name: trimmed },
-      });
-      serviceIds.push(service.id);
-    }
+    const names = [...new Set(adult_services)]
+      .filter((n) => typeof n === "string" && n.trim())
+      .map((n: string) => n.trim());
+    const services = await Promise.all(
+      names.map((name) =>
+        prisma.adultService.upsert({ where: { name }, update: {}, create: { name } })
+      )
+    );
+    const serviceIds = services.map((s) => s.id);
     if (serviceIds.length > 0) {
       await prisma.escortAdultService.createMany({
         data: serviceIds.map((adultServiceId) => ({ escortId: escort.id, adultServiceId })),

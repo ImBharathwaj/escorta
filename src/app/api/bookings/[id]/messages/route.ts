@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { MESSAGE_CREDITS } from "@/lib/credits";
 import { recordCreditTransaction } from "@/lib/creditLedger";
 import { requireAuth } from "@/lib/auth";
+import { rateLimit } from "@/lib/rateLimit";
 
 async function canAccessBooking(bookingId: string, userId: string, role: string) {
   const booking = await prisma.booking.findUnique({
@@ -33,6 +34,9 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const limited = rateLimit(req, { keyPrefix: "booking:messages:get", limit: 180, windowMs: 60_000 });
+  if (limited) return limited;
+
   const payload = requireAuth(req);
   if (payload instanceof NextResponse) return payload;
 
@@ -65,6 +69,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const limited = rateLimit(req, { keyPrefix: "booking:messages:post", limit: 60, windowMs: 60_000 });
+  if (limited) return limited;
+
   const payload = requireAuth(req);
   if (payload instanceof NextResponse) return payload;
 

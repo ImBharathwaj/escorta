@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 
 /**
  * Normalized API error response. Use in catch blocks to avoid leaking stack traces.
@@ -25,6 +26,7 @@ export function withErrorHandler<T extends unknown[]>(
       return await handler(...args);
     } catch (e) {
       console.error("[API error]", e);
+      Sentry.captureException(e);
       return apiError("Internal server error", 500);
     }
   };
