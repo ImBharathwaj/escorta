@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -10,6 +10,42 @@ type PendingPhoto = {
   createdAt: string;
   escort: { id: string; aliasName: string; email: string | null };
 };
+
+function AdminPhotoImage({ photoId, token }: { photoId: string; token: string | null }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const blobRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!photoId || !token) return;
+    let revoked = false;
+    fetch(`/api/photos/${photoId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed");
+        return r.blob();
+      })
+      .then((blob) => {
+        if (revoked) return;
+        const url = URL.createObjectURL(blob);
+        blobRef.current = url;
+        setSrc(url);
+      })
+      .catch(() => {});
+    return () => {
+      revoked = true;
+      if (blobRef.current) URL.revokeObjectURL(blobRef.current);
+      blobRef.current = null;
+      setSrc(null);
+    };
+  }, [photoId, token]);
+
+  if (!src) {
+    return <div className="w-full aspect-square bg-[var(--color-slate)] animate-pulse" />;
+  }
+  return <img src={src} alt="" className="w-full aspect-square object-cover bg-black" />;
+}
 
 export default function AdminPhotosPage() {
   const { token } = useAuth();
@@ -69,8 +105,7 @@ export default function AdminPhotosPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {photos.map((p) => (
             <div key={p.id} className="border border-[var(--color-border)] bg-[var(--color-charcoal)] rounded overflow-hidden">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={p.imageUrl} alt="" className="w-full aspect-square object-cover bg-black" />
+              <AdminPhotoImage photoId={p.id} token={token} />
               <div className="p-4 space-y-2">
                 <p className="text-sm text-[var(--color-ivory)] font-light">
                   {p.escort.aliasName} <span className="text-[var(--color-muted)]">({p.escort.email ?? "—"})</span>

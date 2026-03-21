@@ -23,18 +23,19 @@ export async function GET(
 ) {
   const auth = getAuth(req);
   let canViewFull = false;
+  const isAdmin = auth?.role === "admin";
 
   const { id } = await params;
 
   const photo = await prisma.escortPhoto.findUnique({
-    where: { id, isApproved: true },
+    where: isAdmin ? { id } : { id, isApproved: true },
     select: { imageUrl: true, escortId: true },
   });
   if (!photo) {
     return NextResponse.json({ error: "Photo not found" }, { status: 404 });
   }
 
-  if (auth?.role === "admin") {
+  if (isAdmin) {
     canViewFull = true;
   }
 
