@@ -1,0 +1,260 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: escorta-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-escorta}
+      POSTGRES_USER: ${POSTGRES_USER:-escorta}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-escorta_password_change_me}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-escorta} -d ${POSTGRES_DB:-escorta}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "${POSTGRES_PORT:-55432}:5432"
+    networks:
+      - escorta-net
+
+  pgbouncer:
+    profiles: ["prod"]
+    image: ${PGBOUNCER_IMAGE:-edoburu/pgbouncer:latest}
+    container_name: escorta-pgbouncer
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-escorta}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-escorta_password_change_me}
+      DB_NAME: ${POSTGRES_DB:-escorta}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-500}
+      DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-50}
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 6432"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "${PGBOUNCER_PORT:-16432}:6432"
+    networks:
+      - escorta-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: escorta-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "${REDIS_PORT:-16379}:6379"
+    networks:
+      - escorta-net
+
+  minio:
+    image: ${MINIO_IMAGE:-minio/minio:latest}
+    container_name: escorta-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "${MINIO_API_PORT:-19000}:9000"
+      - "${MINIO_CONSOLE_PORT:-19001}:9001"
+    networks:
+      - escorta-net
+
+  # Development profile: run Next.js in dev mode with bind mount.
+  app-dev:
+    profiles: ["dev"]
+    image: node:20-alpine
+    container_name: escorta-app-dev
+    restart: unless-stopped
+    working_dir: /workspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    command: >
+      sh -c "npm ci &&
+             npx prisma generate &&
+             npm run dev"
+    environment:
+      NODE_ENV: development
+      APP_URL: ${APP_URL:-http://localhost:3300}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-escorta}:${POSTGRES_PASSWORD:-escorta_password_change_me}@postgres:5432/${POSTGRES_DB:-escorta}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:-}
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-escort-images}
+      LIVEKIT_URL: ${LIVEKIT_URL:-}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      NEXT_PUBLIC_LIVEKIT_URL: ${NEXT_PUBLIC_LIVEKIT_URL:-}
+      NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+    volumes:
+      - ./:/workspace
+      - node_modules_cache:/workspace/node_modules
+      - next_cache:/workspace/.next
+    ports:
+      - "${APP_PORT:-3300}:3000"
+    networks:
+      - escorta-net
+
+  # Production profile: build and run optimized Next.js container.
+  app:
+    profiles: ["prod"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: escorta-app
+    restart: unless-stopped
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      APP_URL: ${APP_URL:-https://example.com}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-escorta}:${POSTGRES_PASSWORD:-escorta_password_change_me}@pgbouncer:6432/${POSTGRES_DB:-escorta}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-change-me}
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-escort-images}
+      LIVEKIT_URL: ${LIVEKIT_URL:-}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      NEXT_PUBLIC_LIVEKIT_URL: ${NEXT_PUBLIC_LIVEKIT_URL:-}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-}
+    ports:
+      - "${APP_PORT:-3300}:3000"
+    networks:
+      - escorta-net
+
+  token-validator:
+    profiles: ["realtime"]
+    image: ${TOKEN_VALIDATOR_IMAGE:-ghcr.io/escorta/token-validator:latest}
+    container_name: escorta-token-validator
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      SERVICE_NAME: token-validator
+      PORT: 8081
+      JWT_SECRET: ${JWT_SECRET:-change-me}
+      REDIS_URL: redis://redis:6379
+      TOKEN_CACHE_TTL_SECONDS: ${TOKEN_CACHE_TTL_SECONDS:-30}
+      NODE_INTROSPECTION_URL: ${NODE_INTROSPECTION_URL:-http://app:3000/api/chat/token/introspect}
+      NODE_INTROSPECTION_SHARED_SECRET: ${NODE_INTROSPECTION_SHARED_SECRET:-change-me}
+    ports:
+      - "${TOKEN_VALIDATOR_PORT:-18081}:8081"
+    networks:
+      - escorta-net
+
+  messaging-service:
+    profiles: ["realtime"]
+    image: ${MESSAGING_SERVICE_IMAGE:-ghcr.io/escorta/messaging-service:latest}
+    container_name: escorta-messaging-service
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      token-validator:
+        condition: service_started
+    environment:
+      SERVICE_NAME: messaging-service
+      PORT: 8082
+      REDIS_URL: redis://redis:6379
+      TOKEN_VALIDATOR_URL: http://token-validator:8081
+      NODE_WRITE_API_BASE: ${NODE_WRITE_API_BASE:-http://app:3000}
+      NODE_WRITE_API_SHARED_SECRET: ${NODE_WRITE_API_SHARED_SECRET:-change-me}
+      MESSAGE_MAX_BYTES: ${MESSAGE_MAX_BYTES:-8192}
+    ports:
+      - "${MESSAGING_SERVICE_PORT:-18082}:8082"
+    networks:
+      - escorta-net
+
+  realtime-gateway:
+    profiles: ["realtime"]
+    image: ${REALTIME_GATEWAY_IMAGE:-ghcr.io/escorta/realtime-gateway:latest}
+    container_name: escorta-realtime-gateway
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      token-validator:
+        condition: service_started
+      messaging-service:
+        condition: service_started
+    environment:
+      SERVICE_NAME: realtime-gateway
+      PORT: 8080
+      REDIS_URL: redis://redis:6379
+      TOKEN_VALIDATOR_URL: http://token-validator:8081
+      MESSAGING_SERVICE_URL: http://messaging-service:8082
+      WS_PING_INTERVAL_SECONDS: ${WS_PING_INTERVAL_SECONDS:-25}
+      WS_IDLE_TIMEOUT_SECONDS: ${WS_IDLE_TIMEOUT_SECONDS:-90}
+      ENABLE_SSE_FALLBACK: ${ENABLE_SSE_FALLBACK:-true}
+    ports:
+      - "${REALTIME_GATEWAY_PORT:-18080}:8080"
+    networks:
+      - escorta-net
+
+  # Optional event bus for production hardening / async fan-out.
+  nats:
+    profiles: ["prod"]
+    image: nats:2.11-alpine
+    container_name: escorta-nats
+    restart: unless-stopped
+    command: ["-js"]
+    ports:
+      - "${NATS_PORT:-14222}:4222"
+      - "${NATS_MONITOR_PORT:-18222}:8222"
+    networks:
+      - escorta-net
+
+volumes:
+  pg_data:
+  redis_data:
+  minio_data:
+  node_modules_cache:
+  next_cache:
+
+networks:
+  escorta-net:
+    driver: bridge
